@@ -21,7 +21,7 @@ print(mincostFlow)
 label_edges = {}
 for k1,v1 in mincostFlow.items():
     for k2,v2 in v1.items():
-        label_edges[(k1, k2)] = v2
+        label_edges[(k1, k2)] = (G[k1][k2]["capacity"], G[k1][k2]["weight"], v2)
 print(label_edges)
 
 pos=nx.planar_layout(G)
