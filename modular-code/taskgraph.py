@@ -260,7 +260,6 @@ class TaskGraph():
                 self.prog.AddCost(lambda z: eval(fstring), vars=fvars)
             else:
                 self.prog.AddCost(-1*self.r[i])
-            self.prog.AddCost(-1*self.r[i])
             
             print("finished node: ", i)
             
