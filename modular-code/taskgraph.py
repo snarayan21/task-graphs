@@ -2,10 +2,14 @@ import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 from pydrake.symbolic import Expression
-import pydrake.math as math
-from math import exp
+#import pydrake.math as math
+from pydrake.math import exp
+from pydrake.math import atan
+from math import pi
 import matplotlib.pyplot as plt
 import networkx as nx
+from pydrake.solvers.ipopt import IpoptSolver
+from pydrake.solvers.ipopt import IpoptSolver
 
 class TaskGraph():
     #class for task graphs where nodes are tasks and edges are precedence relationships
@@ -21,10 +25,10 @@ class TaskGraph():
         self.numrobots = numrobots
 
     def step(a, b, c, var):
-        return a/(1+np.exp(-1*b*(var-c)))
+        return a/(1+exp(-1*b*(var-c)))
     
     def dimin(a, b, c, var):
-        return a+(c*(1-np.exp(-1*b*var)))
+        return a+(c*(1-exp(-1*b*var)))
 
     def mult(vars):
         return np.prod(vars)
@@ -124,7 +128,7 @@ class TaskGraph():
                 self.edge_dict_rdex[i] = []
 
         #f is the flow across each edge
-        self.f = self.prog.NewContinuousVariables(len(self.edges_tot), "f")
+        self.f = self.prog.NewContinuousVariables(len(self.edges), "f")
         #p is the coalition component of the reward function for each node 
         self.p = [None]*self.numnodes
         #d is the previous reward component of the reward function for each edge
@@ -152,7 +156,7 @@ class TaskGraph():
 
         for i in range(len(self.edges)):
             #flow cannot exceed number of robots
-            self.prog.AddConstraint(self.f[i] <= self.numrobots)
+            #self.prog.AddConstraint(self.f[i] <= self.numrobots)
             #flow cannot be negative
             self.prog.AddConstraint(self.f[i] >= 0)
             #flow over normal edges is inverse of flow on reverse edges
@@ -244,7 +248,7 @@ class TaskGraph():
             
             self.r[i] = self.g[i]*self.p[i]*(self.g[i]+self.p[i])
 
-            #self.prog.AddConstraint(self.f[1] >= 2)
+            #self.prog.AddConstraint(self.f[2] >= 3)
             
             print(str(self.g[i]))
             print(str(self.p[i]))
@@ -265,8 +269,11 @@ class TaskGraph():
             
     
     def solveGraph(self):
+        """ self.prog.SetSolverOption(IpoptSolver().solver_id(), "max_iter", 10000)
+        solver = IpoptSolver()
+        result = solver.Solve(self.prog) """
         result = Solve(self.prog)
-        #print(result.getSolverDetails())
+        #print(result.get_solver_details())
         print("Success? ", result.is_success())
         print('f* = ', result.GetSolution(self.f))
         """ print('r* = ', result.GetSolution(self.r))
