@@ -6,6 +6,8 @@ from pydrake.symbolic import Expression
 from pydrake.math import exp
 from pydrake.math import atan
 from math import pi
+from pydrake.solvers.snopt import SnoptSolver, SnoptSolverDetails
+#from math import exp
 import matplotlib.pyplot as plt
 import networkx as nx
 from pydrake.solvers.ipopt import IpoptSolver
@@ -254,6 +256,8 @@ class TaskGraph():
             print(str(self.p[i]))
             print(type(self.g[i]))
             print(type(self.p[i]))
+
+
             if(isinstance(self.g[i], Expression) and isinstance(self.p[i], Expression)):
                 fstring, findices = TaskGraph.parseExpression(str(self.g[i]), str(self.p[i]))
                 fvars = []
@@ -283,5 +287,7 @@ class TaskGraph():
         print('c* = ', result.GetSolution(self.c)) """
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
+        aa = result.get_solver_details().info
+        print('Solver Status: ', aa)
 
 
