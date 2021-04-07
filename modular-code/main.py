@@ -19,6 +19,7 @@ def main():
     print(graph.deltas)
     print(graph.aggs)
     print(graph.numrobots)
+    print("---------")
 
     graph.initializeSolver()
 
