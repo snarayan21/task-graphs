@@ -1,9 +1,13 @@
 [exp]
-numnodes = 5
+
 edges = [[0,1], [1,2], [1,3], [2,4], [3,4]]
-rhos = [[1, 0, 0], [5.0, 100.0, 4.5], [5.0, 100.0, 1.5], [1, 0, 0]]
-rhotypes = ["d", "s", "s", "d"]
-deltas = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]
-deltatypes = ["d", "d", "d", "d", "d"]
-aggs = ["a", "a", "a", "a"]
+num_tasks = 5
+
 numrobots = 4
+coalition_types = ["sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid"]
+coalition_params = [[1, 0, 0], [10.0, 6.0, 1.5], [10.0, 6.0, 1.5], [10.0, 6.0, 1.5], [1, 0, 0]]
+
+dependency_types = ["sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid"]
+dependency_params = [[1.0, 6.0, 2.0], [1.0, 6.0, 2.0], [1.0, 6.0, 100.0], [1.0, 6.0, 2.0], [1.0, 6.0, 2.0]]
+
+aggs = ["a", "a", "a", "a"] #currently unused #TODO (Walker): Make this more systematic according to your class?
