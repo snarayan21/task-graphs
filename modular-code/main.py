@@ -13,13 +13,8 @@ def main():
 
     graph = TaskGraph(**track_args['exp'])
 
-    print(graph.numnodes)
+    print(graph.num_tasks)
     print(graph.edges)
-    print(graph.rhos)
-    print(graph.deltas)
-    print(graph.aggs)
-    print(graph.numrobots)
-    print("---------")
 
     graph.initializeSolver()
 
