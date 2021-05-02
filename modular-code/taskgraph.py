@@ -1,17 +1,9 @@
 import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
-from pydrake.symbolic import Expression
-#import pydrake.math as math
-from pydrake.math import exp
-from pydrake.math import atan
-#from math import pi
-from pydrake.solvers.snopt import SnoptSolver, SnoptSolverDetails
-#from math import exp
+import pydrake.math as math
 import matplotlib.pyplot as plt
 import networkx as nx
-from pydrake.solvers.ipopt import IpoptSolver
-from functools import partial
 
 
 class TaskGraph:
@@ -108,96 +100,6 @@ class TaskGraph:
         # now copy over rewards to the edges and sum it up as the total neg cost
         return -np.sum(self.node_reward)
 
-    def replaceVars(string):
-        lstring = list(string)
-        i = 0
-        j = 0
-        while i < len(lstring):
-            if (lstring[i] == 'f'):
-                lstring[i] = 'z'
-                i += 1
-                lstring[i] = '['
-                i += 1
-                lstring[i] = str(j)
-                j += 1
-                i += 1
-                lstring[i] = ']'
-            i += 1
-        
-        return "".join(lstring)
-
-
-    def parseExpression(strg, strp):
-        flow_indices = []
-        prodstring = strg + "*" + strp
-        addstring = strg + "+" + strp
-
-        for i in range(len(strg)):
-            if (strg[i] == 'f'):
-                flow_indices.append(int(strg[i+2]))
-        
-        for i in range(len(strp)):
-            if (strp[i] == 'f'):
-                flow_indices.append(int(strp[i+2]))
-        
-        fprodstring = TaskGraph.replaceVars(prodstring)
-        faddstring = TaskGraph.replaceVars(addstring)
-
-        #finalstring = "-1*(" + fprodstring + ")*(" + faddstring + ")"
-        finalstring = "-1.0*(" + fprodstring + ")*(" + faddstring + ")"
-        
-        return finalstring, flow_indices
-
-    def parseExpressionGi(strg, strp):
-        flow_indices = []
-        prodstring = strg + "*" + strp
-        addstring = strg + "+" + strp
-
-        for i in range(len(strg)):
-            if (strg[i] == 'f'):
-                flow_indices.append(int(strg[i+2]))
-        
-        fprodstring = TaskGraph.replaceVars(prodstring)
-        faddstring = TaskGraph.replaceVars(addstring)
-
-        #finalstring = "-1*(" + fprodstring + ")*(" + faddstring + ")"
-        finalstring = "-1.0*(" + fprodstring + ")*(" + faddstring + ")"
-        
-        return finalstring, flow_indices
-
-    def parseExpressionPi(strg, strp):
-        flow_indices = []
-        prodstring = strg + "*" + strp
-        addstring = strg + "+" + strp
-
-        for i in range(len(strp)):
-            if (strp[i] == 'f'):
-                flow_indices.append(int(strp[i+2]))
-        
-        fprodstring = TaskGraph.replaceVars(prodstring)
-        faddstring = TaskGraph.replaceVars(addstring)
-
-        #finalstring = "-1*(" + fprodstring + ")*(" + faddstring + ")"
-        finalstring = "-1.0*(" + fprodstring + ")*(" + faddstring + ")"
-        
-        return finalstring, flow_indices
-
-    def parseExpressionPiOnly(strp):
-        flow_indices = []
-        stringy = strp
-
-        for i in range(len(strp)):
-            if (strp[i] == 'f'):
-                flow_indices.append(int(strp[i+2]))
-        
-        fstringy = TaskGraph.replaceVars(stringy)
-
-        #finalstring = "-1.0*(" + fprodstring + ")*(" + faddstring + ")"
-        finalstring = "-1.0*(" + fstringy + ")"
-        
-        return finalstring, flow_indices
-        
-
     def initializeSolver(self):
         '''
         This function will define variables, functions, and bounds based on the input info
@@ -226,11 +128,7 @@ class TaskGraph:
         self.prog.AddCost(self.flow_cost, vars=self.flow_var)
 
     def solveGraph(self):
-        """ self.prog.SetSolverOption(IpoptSolver().solver_id(), "max_iter", 10000)
-        solver = IpoptSolver()
-        result = solver.Solve(self.prog) """
         result = Solve(self.prog)
-        #print(result.get_solver_details())
         print("Success? ", result.is_success())
         print('f* = ', result.GetSolution(self.flow_var))
         print('optimal cost = ', result.get_optimal_cost())
