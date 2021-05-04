@@ -2,10 +2,9 @@ import numpy as np
 
 class RewardOracle():
 
-    def __init__(self, coalition_func, delta_func, mean_func, variance_func, reward_func,
+    def __init__(self, mean_func, variance_func, reward_func,
                  name='no_name', node_id=-1):
-        self.coalition_func = coalition_func
-        self.delta_func = delta_func
+        #may want to add in influence func and delta func later, to reason about how these impact reward distribution
         self.mean_func = mean_func
         self.variance_func = variance_func
         self.reward_func = reward_func
@@ -38,4 +37,4 @@ class RewardOracle():
         mean = self.mean_func(reward_func_val)
         var = self.variance_func(reward_func_val)
 
-        return (mean, var)
+        return mean, var
