@@ -24,7 +24,7 @@ class TaskGraph:
         self.coalition_types = coalition_types
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
-        self.aggs = aggs
+        self.influence_agg_func_types = aggs
         self.reward_distributions = [None for _ in range(self.num_tasks)]
 
     def identity(self, f):
@@ -74,19 +74,16 @@ class TaskGraph:
         if self.reward_distributions[node_i] is None:
             # rho*delta gives the mean of our reward distribution, where delta is the
             # scalar aggregation of incoming influence func results
-            reward_func = lambda rho, delta : rho * delta
+            reward_func = lambda rho, delta : rho * delta # in the future can move this inside reward oracle
             mean_func = lambda reward : reward
             var_func = lambda reward : reward
-            self.reward_distributions[node_i] = RewardOracle(mean_func,var_func,reward_func, node_id=node_i)
+            influence_agg_func_type = self.influence_agg_func_types[node_i]
+            self.reward_distributions[node_i] = RewardOracle(mean_func,var_func,reward_func, influence_agg_func_type, node_id=node_i)
 
         coalition_output = self.node_coalition[node_i]
 
-        #can move the aggregation of the influence functions inside the oracle as well
-        aggregated_influence_output = 1
-        for val in task_influence_value:
-            aggregated_influence_output = aggregated_influence_output * val
+        mean, var = self.reward_distributions[node_i].get_mean_var(coalition_output, task_influence_value)
 
-        mean, var = self.reward_distributions[node_i].get_mean_var(coalition_output,aggregated_influence_output)
         reward = mean #in the future, change this to a function of the mean and the variance
         return reward
 
