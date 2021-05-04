@@ -76,7 +76,7 @@ class TaskGraph:
             # scalar aggregation of incoming influence func results
             reward_func = lambda rho, delta : rho * delta # in the future can move this inside reward oracle
             mean_func = lambda reward : reward
-            var_func = lambda reward : reward
+            var_func = lambda reward : 0.2*reward
             influence_agg_func_type = self.influence_agg_func_types[node_i]
             self.reward_distributions[node_i] = RewardOracle(mean_func,var_func,reward_func, influence_agg_func_type, node_id=node_i)
 
