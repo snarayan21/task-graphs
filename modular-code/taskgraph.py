@@ -28,18 +28,28 @@ class TaskGraph:
         self.influence_agg_func_types = aggs
         self.reward_distributions = [None for _ in range(self.num_tasks)]
 
+        # variables using in the optimization
+        self.var_flow = None
+
+        # variables used during run-time
+        self.flow = None
+        self.reward = np.zeros(self.num_tasks)
+        self.reward_mean = np.zeros(self.num_tasks)
+        self.reward_variance = np.zeros(self.num_tasks)
+
     def identity(self, f):
         """
+        Identity function (for passing into pydrake)
         :return:
         """
         return f
 
     def compute_node_coalition(self, node_i, f):
         """
-
-        :param node_i:
-        :param f:
-        :return:
+        This function computes the coalition function output for a given node and a given flow
+        :param node_i, shape=(1x1), index of node for which coalition function has to be evaluated
+        :param f, shape=(1x1), flow incoming into the node
+        :return: shape=(1x1), coalition function output (0 if source node)
         """
         if node_i != 0 or node_i != self.num_tasks:
             coalition_function = getattr(self, self.coalition_types[node_i])
@@ -48,13 +58,25 @@ class TaskGraph:
             # source and sink node has 0 coalition/reward
             return 0
 
-    def compute_node_reward(self, node_i):
+    def cvar_cost(self, mean, var):
         """
-        #TODO: Encode task dependencies
 
-        :param node_i:
-        :param f:
+        :param mean:
+        :param var:
         :return:
+        """
+        return mean  # in the future, change this to a function of the mean and the variance
+
+    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_variance):
+        """
+        For a given node, this function outputs the mean and variance of the reward based on the coalition function
+        of the node, the reward means of influencing nodes, and the corresponding task influence functions
+        TODO: use reward variance of previous nodes in computation as well?
+        :param node_i: shape=(1x1), index of node for which coalition function has to be evaluated
+        :param node_coalition: shape=(1x1),  coalition value for the node
+        :param reward_mean: shape=(num_tasks x 1), mean of rewards for all tasks (only partially filled)
+        :param reward_variance: shape=(num_tasks x 1), variance of rewards for all tasks (only partially filled)
+        :return: (mean, variance) - two scalars
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
@@ -67,58 +89,78 @@ class TaskGraph:
             source_node = self.edges[edge_id][0]
             # extract the delta function applicable to this edge
             task_interdep = getattr(self, self.dependency_types[edge_id])
-            # compute the task influence value (delta for an edge)
-            task_influence_value.append(task_interdep(self.node_reward[source_node],
-                                                      self.dependency_params[edge_id]))
+            # compute the task influence value (delta for an edge). if "null" then
+            if task_interdep.__name__ != 'null':
+                task_influence_value.append(task_interdep(reward_mean[source_node],
+                                                          self.dependency_params[edge_id]))
 
         # if reward distribution is not yet initialized, initialize it
         if self.reward_distributions[node_i] is None:
             # rho*delta gives the mean of our reward distribution, where delta is the
             # scalar aggregation of incoming influence func results
-            reward_func = lambda rho, delta : rho * delta # in the future can move this inside reward oracle
-            mean_func = lambda reward : reward
-            var_func = lambda reward : 0.2*reward
+            reward_func = lambda rho, delta: rho * delta  # in the future can move this inside reward oracle
+            mean_func = lambda reward: reward
+            var_func = lambda reward: 0.2 * reward
             influence_agg_func_type = self.influence_agg_func_types[node_i]
             self.reward_distributions[node_i] = RewardOracle(mean_func,
                                                              var_func,
                                                              reward_func,
                                                              influence_agg_func_type, node_id=node_i)
 
-        coalition_output = self.node_coalition[node_i]
+        mean, var = self.reward_distributions[node_i].get_mean_var(node_coalition, task_influence_value)
 
-        mean, var = self.reward_distributions[node_i].get_mean_var(coalition_output, task_influence_value)
+        return mean, var
 
-        node_reward = mean #in the future, change this to a function of the mean and the variance
-
-        return node_reward
-
-    def flow_cost(self, f):
+    def compute_incoming_flow(self, f):
         """
-
-        :param f:
+        Computes the total incoming flow into each node
         :return:
         """
         D_incoming = np.maximum(self.incidence_mat, 0)
-
         # total incoming flow into each node
-        incoming_flow = D_incoming @ f
+        return D_incoming @ f
 
-        # compute rewards for nodes (sequentially)
-        self.node_reward = np.zeros(self.num_tasks, dtype=object)
-        self.node_coalition = np.zeros(self.num_tasks, dtype=object)
+    def flow_cost(self, f):
+        """
+        Computes the cost function value over the entire task graph
+        :return:
+        """
+        return np.sum(self.nodewise_optim_cost_function(f))
+
+    def nodewise_optim_cost_function(self, f):
+        """
+        Computes the cost function value for all the nodes individually based on the flow value
+        :param f: shape=(num_edges X 1) , flow value over all edges
+
+        :return: shape=(num_tasks X 1) , cost for each node
+        """
+        # total incoming flow into each node
+        incoming_flow = self.compute_incoming_flow(f)
+
+        var_reward_mean = np.zeros(self.num_tasks, dtype=object)
+        var_reward_variance = np.zeros(self.num_tasks, dtype=object)
+
+        node_cost_val = np.zeros(self.num_tasks, dtype=object)
+
         for node_i in range(self.num_tasks):
             # Compute Coalition Function
-            self.node_coalition[node_i] = self.compute_node_coalition(node_i, incoming_flow[node_i])
+            node_coalition = self.compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
             # influencing nodes of node i
-            self.node_reward[node_i] = self.compute_node_reward(node_i)
+            var_reward_mean[node_i], var_reward_variance[node_i] = self.compute_node_reward_dist(node_i,
+                                                                                                 node_coalition,
+                                                                                                 var_reward_mean,
+                                                                                                 var_reward_variance)
+            # use the cvar metric to compute the cost
+            node_cost_val[node_i] = self.cvar_cost(var_reward_mean[node_i],
+                                                   var_reward_variance[node_i])
 
-        # now copy over rewards to the edges and sum it up as the total neg cost
-        return -np.sum(self.node_reward)
+        # return task-wise cost (used in optimization)
+        return -node_cost_val
 
     def update_reward_curves(self):
         """
-
+        Simulates the "disturbance" by changing the reward curves directly
         :return:
         """
         # let's degrade task 2 first
@@ -136,14 +178,14 @@ class TaskGraph:
         '''
 
         self.prog = MathematicalProgram()
-        self.flow_var = self.prog.NewContinuousVariables(self.num_edges)
+        self.var_flow = self.prog.NewContinuousVariables(self.num_edges)
 
         # Define the Opt program
         # Constraint1: Flow must be positive on all edges
         self.prog.AddConstraint(self.identity,
                                 lb=np.zeros(self.num_edges),
                                 ub=np.inf * np.ones(self.num_edges),
-                                vars=self.flow_var)
+                                vars=self.var_flow)
 
         # Constraint2: The inflow must be equal to outflow at all edges
         # compute incidence matrix
@@ -151,28 +193,54 @@ class TaskGraph:
         b = np.zeros(self.num_tasks)
         b[0] = -self.num_robots
         b[-1] = self.num_robots
-        self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.flow_var)
+        self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
-        self.prog.AddCost(self.flow_cost, vars=self.flow_var)
+        self.prog.AddCost(self.flow_cost, vars=self.var_flow)
 
     def solveGraph(self):
+        """
+        Solves the optimization program and computes the flow
+        :return:
+        """
         result = Solve(self.prog)
         print("Success? ", result.is_success())
 
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
+        # Compute coalition values,
+        self.flow = result.GetSolution(self.var_flow)
+        print('f* = ', self.flow)
 
-        self.flow_values = result.GetSolution(self.flow_var)
-        print('f* = ', self.flow_values)
-        print('Optimal Reward', self.flow_cost(self.flow_values))
-        print('Node rewards', self.node_reward)
+    def simulate_task_execution(self):
+        """
+        Simulate task execution (i.e., sample rewards from distribution) based on already computed flows
+        :return:
+        """
+
+        incoming_flow = self.compute_incoming_flow(self.flow)
+        for node_i in range(self.num_tasks):
+            # compute coalition for node_i
+            node_coalition = self.compute_node_coalition(node_i, incoming_flow[node_i])
+            self.reward_mean[node_i], self.reward_variance[node_i] = self.compute_node_reward_dist(node_i,
+                                                                                              node_coalition,
+                                                                                              self.reward_mean,
+                                                                                              self.reward_variance)
+            # sample reward from distribution
+            self.reward[node_i] = np.random.normal(self.reward_mean[node_i], self.reward_variance[node_i])
 
     def sigmoid(self, flow, param):
         return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
         return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
+
+    def null(self, flow, param):
+        """
+        :param flow:
+        :return:
+        """
+        return 0.0
 
     def render(self):
         """
@@ -221,23 +289,23 @@ class TaskGraph:
 
             self.graph_plot_pos = {0: np.array([0, 0.]),
                                    1: np.array([1.0, 0.0]),
-                                   2: np.array([1.5,  1.0]),
+                                   2: np.array([1.5, 1.0]),
                                    3: np.array([1.5, -1.0]),
                                    4: np.array([2.0, 0.0])}
 
             self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
-                                              self.graph_plot_pos,
-                                              arrows=True,
-                                              with_labels=True,
-                                              node_color='y',
-                                              edge_color=self.flow_values,
-                                              width=10.0,
-                                              edge_cmap=plt.cm.Blues,
-                                              ax=self.ax)
+                                                                      self.graph_plot_pos,
+                                                                      arrows=True,
+                                                                      with_labels=True,
+                                                                      node_color='y',
+                                                                      edge_color=self.flow,
+                                                                      width=10.0,
+                                                                      edge_cmap=plt.cm.Blues,
+                                                                      ax=self.ax)
             self.fig.canvas.draw()
             plt.show(block=False)
         else:
-            label_dict = {i: format(self.coalition_params[i][0],".2f") for i in range(self.num_tasks)}
+            label_dict = {i: format(self.coalition_params[i][0], ".2f") for i in range(self.num_tasks)}
             self.ax.clear()
             self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
                                                                       self.graph_plot_pos,
@@ -245,7 +313,7 @@ class TaskGraph:
                                                                       with_labels=True,
                                                                       labels=label_dict,
                                                                       node_color='y',
-                                                                      edge_color=self.flow_values,
+                                                                      edge_color=self.flow,
                                                                       width=10.0, edge_cmap=plt.cm.Blues)
             self.fig.canvas.draw()
             plt.show(block=False)
