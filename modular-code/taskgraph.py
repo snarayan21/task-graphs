@@ -4,6 +4,7 @@ from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
 import matplotlib.pyplot as plt
 import networkx as nx
+from reward_oracle import RewardOracle
 
 
 class TaskGraph:
@@ -23,8 +24,9 @@ class TaskGraph:
         self.coalition_types = coalition_types
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
-        self.aggs = aggs
         self.fig = None
+        self.influence_agg_func_types = aggs
+        self.reward_distributions = [None for _ in range(self.num_tasks)]
 
     def identity(self, f):
         """
@@ -68,15 +70,27 @@ class TaskGraph:
             # compute the task influence value (delta for an edge)
             task_influence_value.append(task_interdep(self.node_reward[source_node],
                                                       self.dependency_params[edge_id]))
-        #TODO (Walker): Below is a specific choice of aggregation and combination with coalition function
-        reward = self.node_coalition[node_i]
-        # import pdb
-        # pdb.set_trace()
-        for val in task_influence_value:
-            reward = reward * val
 
-        # reward = self.node_coalition[node_i]
-        return reward
+        # if reward distribution is not yet initialized, initialize it
+        if self.reward_distributions[node_i] is None:
+            # rho*delta gives the mean of our reward distribution, where delta is the
+            # scalar aggregation of incoming influence func results
+            reward_func = lambda rho, delta : rho * delta # in the future can move this inside reward oracle
+            mean_func = lambda reward : reward
+            var_func = lambda reward : 0.2*reward
+            influence_agg_func_type = self.influence_agg_func_types[node_i]
+            self.reward_distributions[node_i] = RewardOracle(mean_func,
+                                                             var_func,
+                                                             reward_func,
+                                                             influence_agg_func_type, node_id=node_i)
+
+        coalition_output = self.node_coalition[node_i]
+
+        mean, var = self.reward_distributions[node_i].get_mean_var(coalition_output, task_influence_value)
+
+        node_reward = mean #in the future, change this to a function of the mean and the variance
+
+        return node_reward
 
     def flow_cost(self, f):
         """
