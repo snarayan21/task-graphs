@@ -5,9 +5,10 @@ num_tasks = 5
 
 numrobots = 4
 coalition_types = ["sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid"]
-coalition_params = [[1, 0, 0], [10.0, 6.0, 1.5], [10.0, 6.0, 1.5], [10.0, 6.0, 1.5], [1, 0, 0]]
+coalition_params = [[1, 0, 0], [1.0, 1.0, 1.5], [1.0, 6.0, 1.5], [1.0, 6.0, 1.5], [1, 0, 0]]
 
 dependency_types = ["sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid"]
-dependency_params = [[1.0, 6.0, 2.0], [1.0, 6.0, 2.0], [1.0, 6.0, 100.0], [1.0, 6.0, 2.0], [1.0, 6.0, 2.0]]
+dependency_params = [[1.0, 3.0, 0.1], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0]]
 
 aggs = ["a", "a", "a", "a"] #currently unused #TODO (Walker): Make this more systematic according to your class?
+

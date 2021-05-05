@@ -24,6 +24,7 @@ class TaskGraph:
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.aggs = aggs
+        self.fig = None
 
     def identity(self, f):
         """
@@ -69,7 +70,8 @@ class TaskGraph:
                                                       self.dependency_params[edge_id]))
         #TODO (Walker): Below is a specific choice of aggregation and combination with coalition function
         reward = self.node_coalition[node_i]
-
+        # import pdb
+        # pdb.set_trace()
         for val in task_influence_value:
             reward = reward * val
 
@@ -99,6 +101,19 @@ class TaskGraph:
 
         # now copy over rewards to the edges and sum it up as the total neg cost
         return -np.sum(self.node_reward)
+
+    def update_reward_curves(self):
+        """
+
+        :return:
+        """
+        # let's degrade task 2 first
+        if self.coalition_params[2][0] > 0.9:
+            self.delta = -0.05
+        if self.coalition_params[2][0] < 0.1:
+            self.delta = 0.05
+
+        self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
 
     def initializeSolver(self):
         '''
@@ -130,12 +145,14 @@ class TaskGraph:
     def solveGraph(self):
         result = Solve(self.prog)
         print("Success? ", result.is_success())
-        print('f* = ', result.GetSolution(self.flow_var))
+
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
-        print('Reward at each node is:')
-        for i in range(self.num_tasks):
-            print(self.compute_node_reward(i))
+
+        self.flow_values = result.GetSolution(self.flow_var)
+        print('f* = ', self.flow_values)
+        print('Optimal Reward', self.flow_cost(self.flow_values))
+        print('Node rewards', self.node_reward)
 
     def sigmoid(self, flow, param):
         return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
@@ -143,6 +160,81 @@ class TaskGraph:
     def dim_return(self, flow, param):
         return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 
+    def render(self):
+        """
+
+        :return:
+        """
+        if self.fig is None:
+            SMALL_SIZE = 10
+            MEDIUM_SIZE = 15
+            BIGGER_SIZE = 25
+            #### FONT SIZE ###########################################################
+            plt.rc('font', size=MEDIUM_SIZE)  # controls default text sizes
+            plt.rc('axes', titlesize=MEDIUM_SIZE)  # fontsize of the axes title
+            plt.rc('axes', labelsize=MEDIUM_SIZE)  # fontsize of the x and y labels
+            plt.rc('xtick', labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
+            plt.rc('ytick', labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
+            plt.rc('legend', fontsize=BIGGER_SIZE)  # legend fontsize
+            plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+            # FONT #################################
+            plt.rcParams["font.family"] = "Times New Roman"
+            plt.rcParams["text.usetex"] = True
+            plt.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+
+            plt.ion()
+
+            # Aesthetic parameters.
+            # Figure aspect ratio.
+            fig_aspect_ratio = 16.0 / 9.0  # Aspect ratio of video.
+            fig_pixel_height = 1080  # Height of video in pixels.
+            dpi = 300  # Pixels per inch (affects fonts and apparent size of inch-scale objects).
+
+            # Set the figure to obtain aspect ratio and pixel size.
+            fig_w = fig_pixel_height / dpi * fig_aspect_ratio  # inches
+            fig_h = fig_pixel_height / dpi  # inches
+            self.fig, self.ax = plt.subplots(1, 1,
+                                             figsize=(fig_w, fig_h),
+                                             constrained_layout=True,
+                                             dpi=dpi)
+            # self.ax.set_xlabel('x')
+            # self.ax.set_ylabel('y')
+
+            # Setting axis equal should be redundant given figure size and limits,
+            # but gives a somewhat better interactive resizing behavior.
+            self.ax.set_aspect('equal')
+
+            self.graph_plot_pos = {0: np.array([0, 0.]),
+                                   1: np.array([1.0, 0.0]),
+                                   2: np.array([1.5,  1.0]),
+                                   3: np.array([1.5, -1.0]),
+                                   4: np.array([2.0, 0.0])}
+
+            self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
+                                              self.graph_plot_pos,
+                                              arrows=True,
+                                              with_labels=True,
+                                              node_color='y',
+                                              edge_color=self.flow_values,
+                                              width=10.0,
+                                              edge_cmap=plt.cm.Blues,
+                                              ax=self.ax)
+            self.fig.canvas.draw()
+            plt.show(block=False)
+        else:
+            label_dict = {i: format(self.coalition_params[i][0],".2f") for i in range(self.num_tasks)}
+            self.ax.clear()
+            self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
+                                                                      self.graph_plot_pos,
+                                                                      arrows=True,
+                                                                      with_labels=True,
+                                                                      labels=label_dict,
+                                                                      node_color='y',
+                                                                      edge_color=self.flow_values,
+                                                                      width=10.0, edge_cmap=plt.cm.Blues)
+            self.fig.canvas.draw()
+            plt.show(block=False)
     # def mult(vars):
     #     return np.prod(vars)
     #

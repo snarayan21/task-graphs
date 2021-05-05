@@ -11,15 +11,26 @@ def main():
 
     track_args = toml.load(args.cfg)
 
-    graph = TaskGraph(**track_args['exp'])
+    task_planning = TaskGraph(**track_args['exp'])
 
-    print(graph.num_tasks)
-    print(graph.edges)
+    print(task_planning.num_tasks)
+    print(task_planning.edges)
 
-    graph.initializeSolver()
+    task_planning.initializeSolver()
 
-    graph.solveGraph()
+    for time in range(100000):
 
+        # induce a disturbance or change in task characteristics
+        task_planning.update_reward_curves()
+
+        # resolve the problem with the modified scenario
+        task_planning.solveGraph()
+
+        # update the visualization
+        task_planning.render()
+
+    plt.ioff()
+    plt.show()
 
 if __name__ == '__main__':
     main()
