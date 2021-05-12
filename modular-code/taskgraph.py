@@ -5,6 +5,8 @@ import pydrake.math as math
 import matplotlib.pyplot as plt
 import networkx as nx
 from reward_oracle import RewardOracle
+from scipy.stats import norm
+import os
 
 
 class TaskGraph:
@@ -65,7 +67,14 @@ class TaskGraph:
         :param var:
         :return:
         """
-        return mean  # in the future, change this to a function of the mean and the variance
+        if not hasattr(self, 'cvar_coeff'):
+            #TODO should this be negative? should this look at the lower tail of the distribution instead of the upper??
+            alpha = 0.05
+            inv_cdf = norm.ppf(alpha)
+            numerator = norm.pdf(inv_cdf)
+            self.cvar_coeff = numerator/(1-alpha)
+
+        return mean + np.sqrt(var)*self.cvar_coeff  # in the future, change this to a function of the mean and the variance
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_variance):
         """
