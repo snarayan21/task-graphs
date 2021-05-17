@@ -233,7 +233,8 @@ class TaskGraph:
         return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
-        return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
+        return param[0] - param[2]*np.exp(-1 * param[1] * flow)
+        #return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 
     def null(self, flow, param):
         """
@@ -286,12 +287,14 @@ class TaskGraph:
             # Setting axis equal should be redundant given figure size and limits,
             # but gives a somewhat better interactive resizing behavior.
             self.ax.set_aspect('equal')
-
-            self.graph_plot_pos = {0: np.array([0, 0.]),
-                                   1: np.array([1.0, 0.0]),
-                                   2: np.array([1.5, 1.0]),
-                                   3: np.array([1.5, -1.0]),
-                                   4: np.array([2.0, 0.0])}
+            if self.num_tasks == 5:
+                self.graph_plot_pos = {0: np.array([0, 0.]),
+                                       1: np.array([1.0, 0.0]),
+                                       2: np.array([1.5, 1.0]),
+                                       3: np.array([1.5, -1.0]),
+                                       4: np.array([2.0, 0.0])}
+            elif self.num_tasks == 11:
+                self.graph_plot_pos = nx.planar_layout(self.task_graph)
 
             self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
                                                                       self.graph_plot_pos,
