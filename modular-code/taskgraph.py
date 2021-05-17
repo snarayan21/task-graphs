@@ -181,18 +181,18 @@ class TaskGraph:
         self.var_flow = self.prog.NewContinuousVariables(self.num_edges)
 
         # Define the Opt program
-        # Constraint1: Flow must be positive on all edges
+        # Constraint1: Flow must be positive on all edges and can never exceed 1
         self.prog.AddConstraint(self.identity,
                                 lb=np.zeros(self.num_edges),
-                                ub=np.inf * np.ones(self.num_edges),
+                                ub=np.ones(self.num_edges),
                                 vars=self.var_flow)
 
         # Constraint2: The inflow must be equal to outflow at all edges
         # compute incidence matrix
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
         b = np.zeros(self.num_tasks)
-        b[0] = -self.num_robots
-        b[-1] = self.num_robots
+        b[0] = -1.0#self.num_robots # flow constrained to sum upto 1
+        b[-1] = 1.0#self.num_robots
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
@@ -293,7 +293,7 @@ class TaskGraph:
                                        2: np.array([1.5, 1.0]),
                                        3: np.array([1.5, -1.0]),
                                        4: np.array([2.0, 0.0])}
-            elif self.num_tasks == 11:
+            else:
                 self.graph_plot_pos = nx.planar_layout(self.task_graph)
 
             self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
