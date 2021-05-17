@@ -1,6 +1,6 @@
 import numpy as np
 
-class RewardOracle():
+class NodeRewardDistribution():
 
     def __init__(self, mean_func, variance_func, reward_func, influence_agg_func_type = 'm',
                  name='no_name', node_id=-1):

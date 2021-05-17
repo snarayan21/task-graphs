@@ -3,8 +3,9 @@ from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
 import matplotlib.pyplot as plt
+import matplotlib
 import networkx as nx
-from reward_oracle import RewardOracle
+from node_reward_distribution import NodeRewardDistribution
 from scipy.stats import norm
 import os
 
@@ -28,7 +29,7 @@ class TaskGraph:
         self.dependency_types = dependency_types
         self.fig = None
         self.influence_agg_func_types = aggs
-        self.reward_distributions = [None for _ in range(self.num_tasks)]
+        self.reward_distributions = self.initialize_reward_distributions()
 
         # variables using in the optimization
         self.var_flow = None
@@ -38,6 +39,22 @@ class TaskGraph:
         self.reward = np.zeros(self.num_tasks)
         self.reward_mean = np.zeros(self.num_tasks)
         self.reward_variance = np.zeros(self.num_tasks)
+
+    def initialize_reward_distributions(self):
+        reward_distributions = []
+        # rho*delta gives the mean of our reward distribution, where delta is the
+        # scalar aggregation of incoming influence func results
+        mean_func = lambda reward: reward
+        var_func = lambda reward: 0.2 * reward
+        reward_func = lambda rho, delta: rho * delta  # in the future can move this inside reward oracle
+        for i in range(self.num_tasks):
+            influence_agg_func_type = self.influence_agg_func_types[i]
+            reward_distributions.append(NodeRewardDistribution(mean_func,
+                                                                       var_func,
+                                                                       reward_func,
+                                                                       influence_agg_func_type, node_id=i))
+
+        return reward_distributions
 
     def identity(self, f):
         """
@@ -102,19 +119,6 @@ class TaskGraph:
             if task_interdep.__name__ != 'null':
                 task_influence_value.append(task_interdep(reward_mean[source_node],
                                                           self.dependency_params[edge_id]))
-
-        # if reward distribution is not yet initialized, initialize it
-        if self.reward_distributions[node_i] is None:
-            # rho*delta gives the mean of our reward distribution, where delta is the
-            # scalar aggregation of incoming influence func results
-            reward_func = lambda rho, delta: rho * delta  # in the future can move this inside reward oracle
-            mean_func = lambda reward: reward
-            var_func = lambda reward: 0.2 * reward
-            influence_agg_func_type = self.influence_agg_func_types[node_i]
-            self.reward_distributions[node_i] = RewardOracle(mean_func,
-                                                             var_func,
-                                                             reward_func,
-                                                             influence_agg_func_type, node_id=node_i)
 
         mean, var = self.reward_distributions[node_i].get_mean_var(node_coalition, task_influence_value)
 
@@ -256,6 +260,7 @@ class TaskGraph:
 
         :return:
         """
+        matplotlib.use('TKAgg', force=True)
         if self.fig is None:
             SMALL_SIZE = 10
             MEDIUM_SIZE = 15
