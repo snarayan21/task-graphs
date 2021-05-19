@@ -19,7 +19,7 @@ def main():
 
     for time in range(100000):
         # induce a disturbance or change in task characteristics
-        task_planning.update_reward_curves()  # TODO: introduce adaptive piece here
+        # task_planning.update_reward_curves()  # TODO: introduce adaptive piece here
 
         # resolve the problem with the modified scenario
         task_planning.solveGraph()

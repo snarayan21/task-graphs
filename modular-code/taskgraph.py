@@ -194,18 +194,18 @@ class TaskGraph:
         self.var_flow = self.prog.NewContinuousVariables(self.num_edges)
 
         # Define the Opt program
-        # Constraint1: Flow must be positive on all edges
+        # Constraint1: Flow must be positive on all edges and can never exceed 1
         self.prog.AddConstraint(self.identity,
                                 lb=np.zeros(self.num_edges),
-                                ub=np.inf * np.ones(self.num_edges),
+                                ub=np.ones(self.num_edges),
                                 vars=self.var_flow)
 
         # Constraint2: The inflow must be equal to outflow at all edges
         # compute incidence matrix
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
         b = np.zeros(self.num_tasks)
-        b[0] = -self.num_robots
-        b[-1] = self.num_robots
+        b[0] = -1.0#self.num_robots # flow constrained to sum upto 1
+        b[-1] = 1.0#self.num_robots
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
@@ -246,7 +246,8 @@ class TaskGraph:
         return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
-        return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
+        return param[0] - param[2]*np.exp(-1 * param[1] * flow)
+        #return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 
     def null(self, flow, param):
         """
@@ -300,12 +301,14 @@ class TaskGraph:
             # Setting axis equal should be redundant given figure size and limits,
             # but gives a somewhat better interactive resizing behavior.
             self.ax.set_aspect('equal')
-
-            self.graph_plot_pos = {0: np.array([0, 0.]),
-                                   1: np.array([1.0, 0.0]),
-                                   2: np.array([1.5, 1.0]),
-                                   3: np.array([1.5, -1.0]),
-                                   4: np.array([2.0, 0.0])}
+            if self.num_tasks == 5:
+                self.graph_plot_pos = {0: np.array([0, 0.]),
+                                       1: np.array([1.0, 0.0]),
+                                       2: np.array([1.5, 1.0]),
+                                       3: np.array([1.5, -1.0]),
+                                       4: np.array([2.0, 0.0])}
+            else:
+                self.graph_plot_pos = nx.planar_layout(self.task_graph)
 
             self.graph_plt_handle = nx.drawing.nx_pylab.draw_networkx(self.task_graph,
                                                                       self.graph_plot_pos,
