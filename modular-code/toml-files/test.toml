@@ -10,4 +10,4 @@ coalition_params = [[0, 0, 0], [1.0, 1.0, 1.5], [1.0, 6.0, 1.5], [1.0, 6.0, 1.5]
 dependency_types = ["null", "sigmoid", "sigmoid", "sigmoid", "sigmoid"]
 dependency_params = [[0, 0, 0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0]]
 
-aggs = ["m", "m", "m", "m", "m"] #aggregation functions for the influence function agg
+aggs = ["and", "and", "and", "and", "and"] #aggregation functions for the influence function agg
