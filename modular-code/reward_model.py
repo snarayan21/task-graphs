@@ -114,11 +114,11 @@ class RewardModel():
             inv_cdf = norm.ppf(alpha)
             numerator = norm.pdf(inv_cdf)
             self.cvar_coeff = numerator / (1 - alpha)
+        return mean
+        #return mean + np.sqrt(
+        #    var) * self.cvar_coeff  # in the future, change this to a function of the mean and the variance
 
-        return mean + np.sqrt(
-            var) * self.cvar_coeff  # in the future, change this to a function of the mean and the variance
-
-    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_variance, deterministic=True):
+    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_variance):
         """
         For a given node, this function outputs the mean and variance of the reward based on the coalition function
         of the node, the reward means of influencing nodes, and the corresponding task influence functions
@@ -142,12 +142,8 @@ class RewardModel():
             task_interdep = getattr(self, self.dependency_types[edge_id])
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
-                if deterministic:
-                    task_influence_value.append(task_interdep(reward_mean[source_node],
-                                                              self.dependency_params[edge_id]))
-                else:
-
-                    task_influence_value.append(task)
+                task_influence_value.append(task_interdep(reward_mean[source_node],
+                                                          self.dependency_params[edge_id]))
 
         mean, var = self.get_mean_var(node_i, node_coalition, task_influence_value)
 
@@ -178,6 +174,7 @@ class RewardModel():
         if self.coalition_params[2][0] < 0.1:
             self.delta = 0.05
 
+        #import pdb; pdb.set_trace()
         self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
 
     def _compute_incoming_flow(self, f):
