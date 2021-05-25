@@ -20,6 +20,7 @@ class TaskGraph:
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
+
         self.fig = None
 
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
@@ -184,7 +185,6 @@ class TaskGraph:
                                                                       node_color='y',
                                                                       edge_color=self.flow,
                                                                       width=10.0, edge_cmap=plt.cm.Blues)
-            import pdb; pdb.set_trace()
             edge_labels_dict = {}
             for j in range(self.task_graph.number_of_edges()):
                 edge_labels_dict[list(self.task_graph.edges)[j]] = format(self.flow[j], ".2f")
