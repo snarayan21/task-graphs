@@ -40,7 +40,7 @@ class RewardModel():
         incoming_flow = self._compute_incoming_flow(f)
 
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
-        var_reward_variance = np.zeros(self.num_tasks, dtype=object)
+        var_reward_stddev = np.zeros(self.num_tasks, dtype=object)
         var_reward = np.zeros(self.num_tasks, dtype=object)
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
@@ -51,43 +51,43 @@ class RewardModel():
             # Compute the reward by combining with Inter-Task Dependency Function
             # influencing nodes of node i
             if eval:
-                var_reward_mean[node_i], var_reward_variance[node_i] = self.compute_node_reward_dist(node_i,
+                var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      var_reward,
-                                                                                                     var_reward_variance)
-                var_reward[node_i] = np.random.normal(var_reward_mean[node_i], var_reward_variance[node_i])
+                                                                                                     var_reward_stddev)
+                var_reward[node_i] = np.random.normal(var_reward_mean[node_i], var_reward_stddev[node_i])
 
             else:
-                var_reward_mean[node_i], var_reward_variance[node_i] = self.compute_node_reward_dist(node_i,
+                var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      var_reward_mean,
-                                                                                                     var_reward_variance)
+                                                                                                     var_reward_stddev)
             # use the cvar metric to compute the cost
             node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
-                                                    var_reward_variance[node_i])
+                                                    var_reward_stddev[node_i])
         if eval:
             return var_reward
         # return task-wise cost (used in optimization)
         return -node_cost_val
 
-    def get_mean_var(self, node_i, rho, deltas):
-        """ Gets the mean and variance of the reward pdf given a coalition and an influence function output
+    def get_mean_std(self, node_i, rho, deltas):
+        """ Gets the mean and std deviation of the reward pdf given a coalition and an influence function output
         :arg rho is currently a scalar integer representing the coalition (i.e. the number of robots, in this
          homogeneous case). This should be replaced with a coalition function output, or perhaps the coalition vector
         :arg deltas is a list of the influencing nodes' influence function outputs
-        :return: (mean, var)
+        :return: (mean, std)
         """
         influence_agg_func = getattr(self, 'influence_agg_' + self.influence_agg_func_types[node_i])
 
-        def variance_func(val):
-            return 0.2 * val
+        def std_dev_func(val):
+            return 0.1 * val
 
         agg_delta = influence_agg_func(deltas)
         reward_func_val = agg_delta * rho
         mean = reward_func_val
-        var = variance_func(reward_func_val)
+        std = std_dev_func(reward_func_val)
 
-        return mean, var
+        return mean, std
 
     def get_influence_agg_func(self, influence_agg_func_type):
         if influence_agg_func_type == 'm':
@@ -101,11 +101,11 @@ class RewardModel():
         else:
             raise NotImplementedError('Influence aggregation type ' + influence_agg_func_type + ' is not supported.')
 
-    def _cvar_cost(self, mean, var):
+    def _cvar_cost(self, mean, std):
         """
 
         :param mean:
-        :param var:
+        :param std:
         :return:
         """
         if not hasattr(self, 'cvar_coeff'):
@@ -113,21 +113,22 @@ class RewardModel():
             alpha = 0.05
             inv_cdf = norm.ppf(alpha)
             numerator = norm.pdf(inv_cdf)
-            self.cvar_coeff = numerator / (1 - alpha)
-        return mean
-        #return mean + np.sqrt(
-        #    var) * self.cvar_coeff  # in the future, change this to a function of the mean and the variance
+            self.cvar_coeff = - numerator / (1 - alpha)
+        print('mean ',mean)
+        cvar_cost = mean + std * self.cvar_coeff
+        print('cvar ',cvar_cost)
+        return cvar_cost
 
-    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_variance):
+    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
         """
-        For a given node, this function outputs the mean and variance of the reward based on the coalition function
+        For a given node, this function outputs the mean and std dev of the reward based on the coalition function
         of the node, the reward means of influencing nodes, and the corresponding task influence functions
-        TODO: use reward variance of previous nodes in computation as well?
+        TODO: use reward std of previous nodes in computation as well?
         :param node_i: shape=(1x1), index of node for which coalition function has to be evaluated
         :param node_coalition: shape=(1x1),  coalition value for the node
         :param reward_mean: shape=(num_tasks x 1), mean of rewards for all tasks (only partially filled)
-        :param reward_variance: shape=(num_tasks x 1), variance of rewards for all tasks (only partially filled)
-        :return: (mean, variance) - two scalars
+        :param reward_std: shape=(num_tasks x 1), std dev of rewards for all tasks (only partially filled)
+        :return: (mean, std) - two scalars
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
@@ -145,9 +146,9 @@ class RewardModel():
                 task_influence_value.append(task_interdep(reward_mean[source_node],
                                                           self.dependency_params[edge_id]))
 
-        mean, var = self.get_mean_var(node_i, node_coalition, task_influence_value)
+        mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
 
-        return mean, var
+        return mean, std
 
     def _compute_node_coalition(self, node_i, f):
         """
