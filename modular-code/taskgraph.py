@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
 from reward_model import RewardModel
+from reward_model_estimate import RewardModelEstimate
 import os
 
 
@@ -23,6 +24,8 @@ class TaskGraph:
 
         self.fig = None
 
+        # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
+        # will hold our estimate values
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
                                         num_robots=self.num_robots,
                                         edges=edges,
@@ -32,6 +35,16 @@ class TaskGraph:
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs)
+
+        self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
+                                num_robots=self.num_robots,
+                                edges=edges,
+                                task_graph=self.task_graph,
+                                coalition_params=coalition_params,
+                                coalition_types=coalition_types,
+                                dependency_params=dependency_params,
+                                dependency_types=dependency_types,
+                                influence_agg_func_types=aggs)
 
         # variables using in the optimization
         self.var_flow = None
@@ -56,7 +69,19 @@ class TaskGraph:
         Simulates the "disturbance" by changing the reward curves directly
         :return:
         """
-        self.reward_model.update_coalition_params()
+        #get current coalition params from reward model estimate
+        self.coalition_params = self.reward_model_estimate.get_coalition_params()
+
+        # let's degrade task 2 first
+        if self.coalition_params[2][0] > 0.9:
+            self.delta = -0.05
+        if self.coalition_params[2][0] < 0.1:
+            self.delta = 0.05
+
+        # import pdb; pdb.set_trace()
+        self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
+
+        self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
     def initializeSolver(self):
         '''
@@ -83,7 +108,7 @@ class TaskGraph:
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
-        self.prog.AddCost(self.reward_model.flow_cost, vars=self.var_flow)
+        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solveGraph(self):
         """
@@ -104,7 +129,7 @@ class TaskGraph:
         Simulate task execution (i.e., sample rewards from distribution) based on already computed flows
         :return:
         """
-
+        # note that this function uses reward_model - the real-world model of the system - rather than the estimate
         self.reward = self.reward_model._nodewise_optim_cost_function(self.flow, eval=True)
 
 

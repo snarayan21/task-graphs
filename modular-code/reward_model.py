@@ -3,7 +3,7 @@ from scipy.stats import norm
 import networkx as nx
 
 
-class RewardModel():
+class RewardModel:
 
     def __init__(self, num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
@@ -114,9 +114,7 @@ class RewardModel():
             inv_cdf = norm.ppf(alpha)
             numerator = norm.pdf(inv_cdf)
             self.cvar_coeff = - numerator / (1 - alpha)
-        print('mean ',mean)
         cvar_cost = mean + std * self.cvar_coeff
-        print('cvar ',cvar_cost)
         return cvar_cost
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
@@ -163,20 +161,6 @@ class RewardModel():
         else:
             # source and sink node has 0 coalition/reward
             return 0
-
-    def update_coalition_params(self):
-        """
-        Simulates the "disturbance" by changing the reward curves directly
-        :return:
-        """
-        # let's degrade task 2 first
-        if self.coalition_params[2][0] > 0.9:
-            self.delta = -0.05
-        if self.coalition_params[2][0] < 0.1:
-            self.delta = 0.05
-
-        #import pdb; pdb.set_trace()
-        self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
 
     def _compute_incoming_flow(self, f):
         """
