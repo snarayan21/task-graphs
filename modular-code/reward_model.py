@@ -4,6 +4,11 @@ import networkx as nx
 
 
 class RewardModel:
+    """
+    A class that stores and computes the reward over a task graph given a robot flow. The model is initialized with
+    reward and graph parameters, and retains these parameters throughout computation. It is the "real-world" model of
+    rewards.
+    """
 
     def __init__(self, num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
