@@ -94,18 +94,6 @@ class RewardModel:
 
         return mean, std
 
-    def get_influence_agg_func(self, influence_agg_func_type):
-        if influence_agg_func_type == 'm':
-            def mult_agg(influence_func_output_list):
-                influence_aggregated = 1
-                for i in range(len(influence_func_output_list)):
-                    influence_aggregated = influence_aggregated * influence_func_output_list[i]
-                return influence_aggregated
-
-            return mult_agg
-        else:
-            raise NotImplementedError('Influence aggregation type ' + influence_agg_func_type + ' is not supported.')
-
     def _cvar_cost(self, mean, std):
         """
 
