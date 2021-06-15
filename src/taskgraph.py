@@ -13,9 +13,11 @@ import os
 class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
-    def __init__(self, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, scenario="test"):
+    def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
+                 numrobots, scenario="test", adaptive=1):
         self.scenario = scenario
+        self.adaptive = adaptive
+        self.max_steps = max_steps
         self.num_tasks = num_tasks
         self.num_robots = numrobots
         self.task_graph = nx.DiGraph()
@@ -73,7 +75,7 @@ class TaskGraph:
         #get current coalition params from reward model estimate
         self.coalition_params = self.reward_model_estimate.get_coalition_params()
 
-        if self.scenario == "test":
+        if "test" in self.scenario:
             # let's degrade task 2 first
             if self.coalition_params[2][0] > 0.9:
                 self.delta = -0.05
@@ -81,7 +83,7 @@ class TaskGraph:
                 self.delta = 0.05
 
             self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
-        elif self.scenario == "farm":
+        elif "farm" in self.scenario:
             ######## TEST 1 (Break the symmetry between 1 and 3) ###############################
             # let's degrade task 2 first
 
@@ -90,7 +92,7 @@ class TaskGraph:
             if self.coalition_params[7][0] > 0.9:
                 self.delta = -0.05
             if self.coalition_params[7][0] < 0.1:
-                self.delta = 0.05
+                self.delta = 0.01
 
             self.coalition_params[7][0] = self.coalition_params[7][0] + self.delta
         #TODO: Implement the adaptive piece here

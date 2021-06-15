@@ -15,11 +15,11 @@ def main():
 
     task_planning = TaskGraph(**track_args['exp'])
 
-    data_logger = LogData(track_args['max_steps'],
-                          track_args['n_agents'],
-                          track_args['num_tasks'],
-                          len(track_args['edges']),
-                          track_args['scenario'])
+    data_logger = LogData(track_args['exp']['max_steps'],
+                          track_args['exp']['numrobots'],
+                          track_args['exp']['num_tasks'],
+                          len(track_args['exp']['edges']),
+                          track_args['exp']['scenario'])
 
     task_planning.initializeSolver()
     task_planning.solveGraph()
@@ -27,7 +27,8 @@ def main():
     for time in range(track_args['exp']['max_steps']):
 
         # solve the flow optimization problem
-        task_planning.solveGraph()
+        if task_planning.adaptive:
+            task_planning.solveGraph()
 
         # sample actual rewards (task execution)
         task_planning.simulate_task_execution()
@@ -41,6 +42,7 @@ def main():
         #store data
         data_logger.store_in_loop(time, task_planning.flow, task_planning.reward)
 
+    data_logger.write_to_file()
     plt.ioff()
     plt.show()
 
