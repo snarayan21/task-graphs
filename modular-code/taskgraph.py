@@ -83,7 +83,7 @@ class TaskGraph:
             self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
         elif self.scenario == "farm":
             ######## TEST 1 (Break the symmetry between 1 and 3) ###############################
-
+            pass
 
             ######## TEST 2 (Make prep feeding task 7 infeasible) #######################
 
