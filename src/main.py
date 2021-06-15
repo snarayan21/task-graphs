@@ -1,6 +1,7 @@
 import sys
 import matplotlib.pyplot as plt
 from taskgraph import TaskGraph
+from log_data import LogData
 import toml
 import argparse
 
@@ -14,10 +15,16 @@ def main():
 
     task_planning = TaskGraph(**track_args['exp'])
 
+    data_logger = LogData(track_args['max_steps'],
+                          track_args['n_agents'],
+                          track_args['num_tasks'],
+                          len(track_args['edges']),
+                          track_args['scenario'])
+
     task_planning.initializeSolver()
     task_planning.solveGraph()
 
-    for time in range(100):
+    for time in range(track_args['exp']['max_steps']):
 
         # solve the flow optimization problem
         task_planning.solveGraph()
@@ -30,6 +37,9 @@ def main():
 
         # induce a disturbance or change in task characteristics
         task_planning.update_reward_curves()
+
+        #store data
+        data_logger.store_in_loop(time, task_planning.flow, task_planning.reward)
 
     plt.ioff()
     plt.show()

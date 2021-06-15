@@ -83,10 +83,16 @@ class TaskGraph:
             self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
         elif self.scenario == "farm":
             ######## TEST 1 (Break the symmetry between 1 and 3) ###############################
-            pass
+            # let's degrade task 2 first
+
 
             ######## TEST 2 (Make prep feeding task 7 infeasible) #######################
+            if self.coalition_params[7][0] > 0.9:
+                self.delta = -0.05
+            if self.coalition_params[7][0] < 0.1:
+                self.delta = 0.05
 
+            self.coalition_params[7][0] = self.coalition_params[7][0] + self.delta
         #TODO: Implement the adaptive piece here
         self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
