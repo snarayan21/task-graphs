@@ -17,11 +17,9 @@ def main():
     task_planning.initializeSolver()
     task_planning.solveGraph()
 
-    for time in range(10):
-        # induce a disturbance or change in task characteristics
-        # task_planning.update_reward_curves()  # TODO: introduce adaptive piece here
+    for time in range(100):
 
-        # resolve the problem with the modified scenario
+        # solve the flow optimization problem
         task_planning.solveGraph()
 
         # sample actual rewards (task execution)
@@ -29,6 +27,8 @@ def main():
 
         # update the visualization
         task_planning.render()
+
+        # induce a disturbance or change in task characteristics
         task_planning.update_reward_curves()
 
     plt.ioff()
