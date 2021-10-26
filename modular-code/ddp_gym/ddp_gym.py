@@ -45,17 +45,22 @@ class DDP:
               np.matmul(np.atleast_1d(np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_xx[l + 1]))), np.atleast_1d(f_x_t)) + \
               np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(x_seq[l], u_seq[l]))))
             tmp = np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_xx[l + 1]))
-            q_uu = l_uu(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
+            q_uu = l_uu(x_seq[l], u_seq[l]) +  np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_uu(x_seq[l], u_seq[l])))
-            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(tmp, np.atleast_1d(f_x_t)) + \
+            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_ux(x_seq[l], u_seq[l])))
-            inv_q_uu = np.linalg.inv(q_uu)
-            k = -np.matmul(inv_q_uu, q_u)
-            kk = -np.matmul(inv_q_uu, q_ux)
-            dv = 0.5 * np.matmul(q_u, k)
+
+            try:
+                inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
+            except np.linalg.LinAlgError:
+                inv_q_uu = np.array([[0.0]])
+                print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
+            k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
+            kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
+            dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
-            self.v_x[l] = q_x - np.matmul(np.matmul(q_u, inv_q_uu), q_ux)
-            self.v_xx[l] = q_xx + np.matmul(q_ux.T, kk)
+            self.v_x[l] = q_x - np.matmul(np.matmul(np.atleast_1d(q_u), np.atleast_1d(inv_q_uu)), np.atleast_1d(q_ux))
+            self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux.T), np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
         k_seq.reverse()
@@ -66,9 +71,9 @@ class DDP:
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
         for t in range(len(u_seq)):
-            control = k_seq[t] + np.matmul(kk_seq[t], (x_seq_hat[t] - x_seq[t]))
+            control = k_seq[t] + np.matmul(np.atleast_1d(kk_seq[t]), (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             u_seq_hat[t] = np.clip(u_seq[t] + control, -self.umax, self.umax)
-            x_seq_hat[t + 1] = self.f(x_seq_hat[t], u_seq_hat[t])
+            x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
         return x_seq_hat, u_seq_hat
 """
 env = gym.make('CartPoleContinuous-v0').env
