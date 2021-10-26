@@ -27,8 +27,8 @@ class DDP:
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1):
-            l_x = grad(self.l[l], 0)
-            l_u = grad(self.l[l], 1)
+            l_x = grad(self.l, 0)
+            l_u = grad(self.l, 1)
             l_xx = jacobian(l_x, 0)
             l_uu = jacobian(l_u, 1)
             l_ux = jacobian(l_u, 0)
@@ -39,15 +39,15 @@ class DDP:
             f_ux = jacobian(f_u, 0)
             f_x_t = f_x(x_seq[l], u_seq[l])
             f_u_t = f_u(x_seq[l], u_seq[l])
-            q_x = l_x(x_seq[l], u_seq[l]) + np.matmul(f_x_t.T, self.v_x[l + 1])
-            q_u = l_u(x_seq[l], u_seq[l]) + np.matmul(f_u_t.T, self.v_x[l + 1])
+            q_x = l_x(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
+            q_u = l_u(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
             q_xx = l_xx(x_seq[l], u_seq[l]) + \
-              np.matmul(np.matmul(f_x_t.T, self.v_xx[l + 1]), f_x_t) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_xx(x_seq[l], u_seq[l])))
-            tmp = np.matmul(f_u_t.T, self.v_xx[l + 1])
-            q_uu = l_uu(x_seq[l], u_seq[l]) + np.matmul(tmp, f_u_t) + \
+              np.matmul(np.atleast_1d(np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_xx[l + 1]))), np.atleast_1d(f_x_t)) + \
+              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(x_seq[l], u_seq[l]))))
+            tmp = np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_xx[l + 1]))
+            q_uu = l_uu(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_uu(x_seq[l], u_seq[l])))
-            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(tmp, f_x_t) + \
+            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(tmp, np.atleast_1d(f_x_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_ux(x_seq[l], u_seq[l])))
             inv_q_uu = np.linalg.inv(q_uu)
             k = -np.matmul(inv_q_uu, q_u)
