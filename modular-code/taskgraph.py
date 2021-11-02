@@ -7,6 +7,9 @@ import matplotlib
 import networkx as nx
 from reward_model import RewardModel
 from reward_model_estimate import RewardModelEstimate
+from ddp_gym.ddp_gym import DDP
+from copy import copy
+
 import os
 
 
@@ -109,6 +112,44 @@ class TaskGraph:
 
         # now for the cost
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
+
+    def initialize_solver_ddp(self):
+        # define graph
+        num_nodes = 4
+        edges = [(0, 1), (1, 2), (2, 3)]
+        influence_coeffs = [None, 2, 2, 2]
+        coalition_coeffs = [None, 2, 2, 2]
+
+        dynamics_func_handle = self.reward_model.get_dynamics_equations()
+
+        self.ddp = DDP([lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks-1)],  # x(i+1) = f(x(i), u)
+                  lambda x, u: x,  # l(x, u)
+                  lambda x: x,  # lf(x)
+                  100,
+                  1,
+                  pred_time=self.num_tasks-1)
+
+        self.last_u_seq = np.zeros((self.num_tasks-1,))
+        self.last_x_seq = [0.01]
+        for l in range(0, self.ddp.pred_time):
+            self.last_x_seq.append(dynamics_func_handle(self.last_x_seq[l], self.last_u_seq[l], l + 1))
+        #print(x_seq)
+
+    def solve_ddp(self):
+        i = 0
+        max_iter = 30
+        threshold = 0
+        delta = np.inf
+        prev_u_seq = copy(self.last_u_seq)
+        while i < max_iter and delta > threshold:
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
+            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
+            print(self.last_x_seq)
+            print(self.last_u_seq)
+            i += 1
+            delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
+            print(delta)
+            prev_u_seq = copy(self.last_u_seq)
 
     def solveGraph(self):
         """
@@ -220,170 +261,3 @@ class TaskGraph:
 
             self.fig.canvas.draw()
             plt.show(block=False)
-    # def mult(vars):
-    #     return np.prod(vars)
-    #
-    # def add(vars):
-    #     return np.sum(vars)
-    #
-    # def combo(vars):
-    #     return np.prod(vars) * np.sum(vars)
-    #
-    #     # edges_tot will include all edges and their reverses
-    #     self.edges_tot = self.edges.copy()
-    #
-    #     for e in self.edges:
-    #         self.edges_tot.append([e[1], e[0]])
-    #
-    #     self.edge_dict_n = {}
-    #     self.edge_dict_r = {}
-    #     self.edge_dict_ndex = {}
-    #     self.edge_dict_rdex = {}
-    #
-    #     for i in range(len(self.edges)):
-    #         e = self.edges[i]
-    #         if e[0] in self.edge_dict_n:
-    #             self.edge_dict_n[e[0]].append(e[1])
-    #         else:
-    #             self.edge_dict_n[e[0]] = [e[1]]
-    #
-    #         if e[0] in self.edge_dict_ndex:
-    #             self.edge_dict_ndex[e[0]].append(i)
-    #         else:
-    #             self.edge_dict_ndex[e[0]] = [i]
-    #
-    #         if e[1] in self.edge_dict_r:
-    #             self.edge_dict_r[e[1]].append(e[0])
-    #         else:
-    #             self.edge_dict_r[e[1]] = [e[0]]
-    #
-    #         if e[1] in self.edge_dict_rdex:
-    #             self.edge_dict_rdex[e[1]].append(i)
-    #         else:
-    #             self.edge_dict_rdex[e[1]] = [i]
-    #
-    #     for i in range(self.numnodes):
-    #         if i not in self.edge_dict_n:
-    #             self.edge_dict_n[i] = []
-    #         if i not in self.edge_dict_r:
-    #             self.edge_dict_r[i] = []
-    #         if i not in self.edge_dict_ndex:
-    #             self.edge_dict_ndex[i] = []
-    #         if i not in self.edge_dict_rdex:
-    #             self.edge_dict_rdex[i] = []
-    #
-    #     print(self.edge_dict_ndex)
-    #     print(self.edge_dict_rdex)
-    #
-    #     # f is the flow across each edge
-    #     self.f = self.prog.NewContinuousVariables(len(self.edges_tot), "f")
-    #     # p is the coalition component of the reward function for each node
-    #     self.p = self.prog.NewContinuousVariables(self.numnodes, "p")
-    #     # d is the previous reward component of the reward function for each edge
-    #     self.d = self.prog.NewContinuousVariables(len(self.edges), "d")
-    #     # r is the reward for each node
-    #     self.r = self.prog.NewContinuousVariables(self.numnodes, "r")
-    #     # c is the combined flow coming into each node
-    #     self.c = self.prog.NewContinuousVariables(self.numnodes, "c")
-    #     # g is the aggregation of the deltas coming into each node
-    #     self.g = self.prog.NewContinuousVariables(self.numnodes, "g")
-    #
-    #     # all these variables must be positive
-    #     for i in range(self.numnodes):
-    #         self.prog.AddConstraint(self.g[i] >= 0)
-    #         self.prog.AddConstraint(self.c[i] >= 0)
-    #         self.prog.AddConstraint(self.r[i] >= 0)
-    #         self.prog.AddConstraint(self.p[i] >= 0)
-    #
-    #     for i in range(len(self.edges)):
-    #         self.prog.AddConstraint(self.d[i] >= 0)
-    #
-    #     for i in range(len(self.edges)):
-    #         # flow cannot exceed number of robots
-    #         self.prog.AddConstraint(self.f[i] <= self.numrobots)
-    #         # flow over normal edges is inverse of flow on reverse edges
-    #         self.prog.AddConstraint(self.f[i] == -1 * self.f[i + len(self.edges)])
-    #
-    #     for i in range(self.numnodes):
-    #         inflow = []
-    #         for j in self.edge_dict_rdex[i]:
-    #             inflow.append(self.f[j])
-    #
-    #         inflow = np.array(inflow)
-    #
-    #         # c[i] is the inflow to node i -- important for rho function
-    #         self.prog.AddConstraint(self.c[i] == np.sum(inflow))
-    #
-    #     # set the inflow of source node to 0
-    #     self.prog.AddConstraint(self.c[0] == 0)
-    #
-    #     for i in range(1, self.numnodes - 1):
-    #         outflow = []
-    #         for j in self.edge_dict_ndex[i]:
-    #             outflow.append(self.f[j])
-    #
-    #         outflow = np.array(outflow)
-    #
-    #         # c[i], which is node inflow, must be equal to node outflow (flow conservation)
-    #         # this does not apply to the source or the sink
-    #         self.prog.AddConstraint(self.c[i] - np.sum(outflow) == 0)
-    #
-    #     # outflow on node 0 (source) must be equal to number of robots
-    #     source_outflow = []
-    #     for i in self.edge_dict_ndex[0]:
-    #         source_outflow.append(self.f[i])
-    #     source_outflow = np.array(source_outflow)
-    #     self.prog.AddConstraint(np.sum(source_outflow) == self.numrobots)
-    #
-    #     # inflow on last node (sink) must be equal to number of robots
-    #     self.prog.AddConstraint(self.c[self.numnodes - 1] == self.numrobots)
-    #
-    #     # reward for source node is just a constant -- 1
-    #     self.prog.AddConstraint(self.p[0] == 1)
-    #     self.prog.AddConstraint(self.g[0] == 0)
-    #     self.prog.AddConstraint(self.r[0] == 1)
-    #
-    #     # define rho functions as a function of node inflow
-    #     for i in range(1, len(self.rhos) + 1):
-    #         rho = self.rhos[i - 1]
-    #         rhotype = self.rhotypes[i - 1]
-    #         if (rhotype == "s"):
-    #             print("node", i, ":", *rho)
-    #             self.prog.AddConstraint(self.p[i] == TaskGraph.step(rho[0], rho[1], rho[2], self.c[i]))
-    #         else:
-    #             self.prog.AddConstraint(self.p[i] == TaskGraph.dimin(rho[0], rho[1], rho[2], self.c[i]))
-    #
-    #     # define delta functions as a function of previous reward
-    #     for i in range(len(self.edges)):
-    #         delta = self.deltas[i]
-    #         deltatype = self.deltatypes[i]
-    #         e = self.edges[i]
-    #         if (deltatype == "s"):
-    #             self.prog.AddConstraint(self.d[i] == TaskGraph.step(delta[0], delta[1], delta[2], self.r[e[0]]))
-    #         else:
-    #             self.prog.AddConstraint(self.d[i] == TaskGraph.dimin(delta[0], delta[1], delta[2], self.r[e[0]]))
-    #
-    #     # define agg functions as functions of incoming deltas
-    #     for i in range(1, self.numnodes):
-    #         agg = self.aggs[i - 1]
-    #         indeltas = []
-    #         for j in self.edge_dict_rdex[i]:
-    #             indeltas.append(self.d[j])
-    #
-    #         indeltas = np.array(indeltas)
-    #
-    #         if (agg == "a"):
-    #             self.prog.AddConstraint(self.g[i] == TaskGraph.add(indeltas))
-    #
-    #         elif (agg == "m"):
-    #             self.prog.AddConstraint(self.g[i] == TaskGraph.mult(indeltas))
-    #
-    #         else:
-    #             self.prog.AddConstraint(self.g[i] == TaskGraph.combo(indeltas))
-    #
-    #     # define reward as "combo" of rho and agg
-    #     for i in range(1, self.numnodes):
-    #         self.prog.AddConstraint(self.r[i] == self.g[i] * self.p[i] * (self.g[i] + self.p[i]))
-    #         # here we make the sign of reward negative since the solver is minimizing
-    #         # which is equivalent to maximizing the positive reward
-    #         self.prog.AddCost(-1 * self.r[i])

@@ -14,15 +14,15 @@ def main():
 
     task_planning = TaskGraph(**track_args['exp'])
 
-    task_planning.initializeSolver()
-    task_planning.solveGraph()
+    task_planning.initialize_solver_ddp()
+    task_planning.solve_ddp()
 
     for time in range(10):
         # induce a disturbance or change in task characteristics
         # task_planning.update_reward_curves()  # TODO: introduce adaptive piece here
 
         # resolve the problem with the modified scenario
-        task_planning.solveGraph()
+        task_planning.solve_ddp()
 
         # sample actual rewards (task execution)
         task_planning.simulate_task_execution()

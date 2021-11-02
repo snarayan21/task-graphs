@@ -29,7 +29,7 @@ class RewardModel:
         """
         return np.sum(self._nodewise_optim_cost_function(f))
 
-    def _nodewise_optim_cost_function(self, f, eval=False):
+    def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False):
         """
         Computes the cost function value for all the nodes individually based on the flow value
         :param f: shape=(num_edges X 1) , flow value over all edges
@@ -62,9 +62,12 @@ class RewardModel:
                                                                                                      node_coalition,
                                                                                                      var_reward_mean,
                                                                                                      var_reward_stddev)
-            # use the cvar metric to compute the cost
-            node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
-                                                    var_reward_stddev[node_i])
+            if use_cvar:
+                # if use_cvar is True, use the cvar metric to compute the cost
+                node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
+                                                        var_reward_stddev[node_i])
+            else: # TODO should we return the means or the samples?
+                node_cost_val[node_i] = var_reward_mean[node_i]
         if eval:
             return var_reward
         # return task-wise cost (used in optimization)
@@ -117,6 +120,23 @@ class RewardModel:
         cvar_cost = mean + std * self.cvar_coeff
         return cvar_cost
 
+    def get_dynamics_equations(self):
+        """
+
+        :return: function handle that takes in (x[l], u[l], l) and returns x[l+1]
+        """
+        def dynamics(x, u, l):
+            """
+            :arg x is the vector of rewards at the incoming neighborhood of node l+1.
+            :arg u is the vector of flows along the incoming edges to node l+1.
+            :arg l is the index of the preceding node
+            """
+            node_coalition = self._compute_node_coalition(l, np.sum(u))
+            reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
+            return reward_mean
+
+        return dynamics
+
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
         """
         For a given node, this function outputs the mean and std dev of the reward based on the coalition function
@@ -132,6 +152,7 @@ class RewardModel:
         incoming_edges = list(self.task_graph.in_edges(node_i))
 
         task_influence_value = []
+        list_ind = 0
         for edge in incoming_edges:
             # find global index of edge
             edge_id = list(self.task_graph.edges).index(edge)
@@ -141,9 +162,15 @@ class RewardModel:
             task_interdep = getattr(self, self.dependency_types[edge_id])
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
-                task_influence_value.append(task_interdep(reward_mean[source_node],
-                                                          self.dependency_params[edge_id]))
 
+                if reward_mean.shape == (self.num_tasks,1):
+                    task_influence_value.append(task_interdep(reward_mean[source_node],
+                                                              self.dependency_params[edge_id]))
+                else:
+                    # we passed in a list of only incoming edges flow
+                    task_influence_value.append(task_interdep(reward_mean[list_ind],
+                                                              self.dependency_params[edge_id]))
+                    list_ind += 1
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
 
         return mean, std
