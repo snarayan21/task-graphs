@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.stats import norm
 import networkx as nx
+import autograd
+import math
 
 
 class RewardModel:
@@ -131,7 +133,11 @@ class RewardModel:
             :arg u is the vector of flows along the incoming edges to node l+1.
             :arg l is the index of the preceding node
             """
-            node_coalition = self._compute_node_coalition(l, np.sum(u))
+            if np.isscalar(u):
+                sum_u = u
+            else:
+                sum_u = sum(u)
+            node_coalition = self._compute_node_coalition(l, sum_u)
             reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
             return reward_mean
 
@@ -163,8 +169,8 @@ class RewardModel:
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
 
-                if reward_mean.shape == (self.num_tasks,1):
-                    task_influence_value.append(task_interdep(reward_mean[source_node],
+                if np.isscalar(reward_mean) or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox):
+                    task_influence_value.append(task_interdep(reward_mean,
                                                               self.dependency_params[edge_id]))
                 else:
                     # we passed in a list of only incoming edges flow
@@ -199,7 +205,7 @@ class RewardModel:
         return D_incoming @ f
 
     def sigmoid(self, flow, param):
-        return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
+        return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
         return param[0] - param[2] * np.exp(-1 * param[1] * flow)

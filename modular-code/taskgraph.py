@@ -151,6 +151,8 @@ class TaskGraph:
             print(delta)
             prev_u_seq = copy(self.last_u_seq)
 
+        self.flow = self.last_u_seq
+
     def solveGraph(self):
         """
         Solves the optimization program and computes the flow
