@@ -1,5 +1,6 @@
 import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
+from pydrake.solvers.mathematicalprogram import MathematicalProgramResult
 from pydrake.solvers.mathematicalprogram import Solve
 from pydrake.symbolic import Expression
 #import pydrake.math as math
@@ -38,6 +39,13 @@ class TaskGraph():
                 Ai[i] = 0
 
         return a/(1+exp(-1*b*(np.dot(Ai, fs)-c)))
+
+    def stepAtanRho(a, b, c, Ai, fs):
+        for i in range(len(Ai)):
+            if(Ai[i] == -1):
+                Ai[i] = 0
+
+        return (a/2) + a*(atan(b*(np.dot(Ai, fs)-c))/3.14159)
     
     def diminRho(a, b, c, Ai, fs):
         for i in range(len(Ai)):
@@ -241,7 +249,8 @@ class TaskGraph():
             rho = self.rhos[i-1]
             rhotype = self.rhotypes[i-1]
             if(rhotype == "s"):
-                self.p[i] = TaskGraph.stepRho(rho[0], rho[1], rho[2], self.A[i].copy(), self.f)
+                #self.p[i] = TaskGraph.stepRho(rho[0], rho[1], rho[2], self.A[i].copy(), self.f)
+                self.p[i] = TaskGraph.stepAtanRho(rho[0], rho[1], rho[2], self.A[i].copy(), self.f)
                 print("node: ", i, "p:", str(self.p[i]))
             else:
                 self.p[i] = TaskGraph.diminRho(rho[0], rho[1], rho[2], self.A[i].copy(), self.f)
