@@ -2,12 +2,17 @@
 #import env
 from autograd import grad, jacobian
 import autograd.numpy as np
+from cvxopt import matrix as cvxopt_matrix
+from cvxopt import solvers as cvxopt_solvers
 
 class DDP:
     def __init__(self, next_state, #vector of dynamics equations function handles -- one for each node
                  running_cost,  #vector of running cost function handles -- one for each node
                  final_cost, #function of final cost
-                 umax, state_dim, pred_time=50):
+                 umax, 
+                 state_dim, 
+                 pred_time,
+                 inc_mat):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -18,6 +23,7 @@ class DDP:
         self.l = running_cost
         self.lf_x = grad(self.lf)
         self.lf_xx = jacobian(self.lf_x)
+        self.incmat = inc_mat
 
 
     def backward(self, x_seq, u_seq):
@@ -55,7 +61,84 @@ class DDP:
             except np.linalg.LinAlgError:
                 inv_q_uu = np.array([[0.0]])
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
+            print(q_uu)
+            q_uu = np.atleast_2d(q_uu)
+            q_x = np.atleast_2d(q_x)
+            nu, _ = q_uu.shape
+            print(q_x)
+            curr_inc_mat = self.incmat[l+1]
+            print(curr_inc_mat)
+            #curr node inflow
+            u = 0.0
+            for i in range(len(curr_inc_mat)):
+                if(curr_inc_mat[i] == 1):
+                    u += u_seq[i]
+            #curr node outflow
+            p = 0.0
+            for i in range(len(curr_inc_mat)):
+                if(curr_inc_mat[i] == -1):
+                    p += u_seq[i]
+
+            solns = np.zeros(nu)
+            
+            if(l == self.pred_time - 1):
+                #constraint on p doesn't take place if we are at last node. Only z slack variable
+                P = np.copy(q_uu)
+                P = np.hstack((P, np.zeros((P.shape[0], 1))))
+                P = np.vstack((P, np.zeros((1, P.shape[1]))))
+                P = cvxopt_matrix(P, tc='d')
+                q = np.copy(q_x)
+                q = np.vstack((q, np.zeros((1,1))))
+                A = np.ones((1, nu+1))
+                b = np.array([1 - u])
+                G = np.zeros((1, nu+1))
+                G[0][-1] = -1
+                h = np.zeros((1, 1))
+
+                P = cvxopt_matrix(P, tc='d')
+                q = cvxopt_matrix(q, tc='d')
+                A = cvxopt_matrix(A, tc='d')
+                b = cvxopt_matrix(b, tc='d')
+                G = cvxopt_matrix(G, tc='d')
+                h= cvxopt_matrix(h, tc='d')
+                
+                soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                sols = np.array(soln['x']).reshape(1,-1)[0]
+                print("SOLUTION: ", sols)
+                solns = sols[:-1]
+
+            else:
+                P = np.copy(q_uu)
+                P = np.hstack((P, np.zeros((P.shape[0], 2))))
+                P = np.vstack((P, np.zeros((2, P.shape[1]))))
+                q = np.copy(q_x)
+                q = np.vstack((q, np.zeros((2,1))))
+                A = np.full((1, nu+2), 2)
+                A[0][-1] = 1
+                A[0][-2] = 1
+                b = np.array([1 + p - (2*u)])
+                G = np.zeros((2, nu+2))
+                G[0][-1] = 1
+                G[1][-1] = -1
+                h = np.zeros((2, 1))
+
+                P = cvxopt_matrix(P, tc='d')
+                q = cvxopt_matrix(q, tc='d')
+                A = cvxopt_matrix(A, tc='d')
+                b = cvxopt_matrix(b, tc='d')
+                G = cvxopt_matrix(G, tc='d')
+                h= cvxopt_matrix(h, tc='d')
+
+                soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                sols = np.array(soln['x']).reshape(1,-1)[0]
+                print("SOLUTION: ", sols)
+                solns = sols[-2]
+ 
             k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
+            knew = np.atleast_1d(solns)
+            print("k is: ", k)
+            print("knew is: ", knew)
+            k = knew
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
