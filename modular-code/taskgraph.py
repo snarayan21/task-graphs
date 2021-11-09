@@ -127,7 +127,8 @@ class TaskGraph:
                   lambda x: x,  # lf(x)
                   100,
                   1,
-                  pred_time=self.num_tasks-1)
+                  pred_time=self.num_tasks-1,
+                  inc_mat=self.reward_model.incidence_mat)
 
         self.last_u_seq = np.zeros((self.num_tasks-1,))
         self.last_x_seq = [0.01]

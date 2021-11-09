@@ -19,9 +19,9 @@ def dynamics(r, f, l):
     return r*r*influence_coeffs[l]+f*coalition_coeffs[l]
 
 def dynamics_b(r,f,l):
-    return -(r**2) + influence_coeffs[l]*r  - (f**2) + coalition_coeffs[l]*f
+    return 1.5** (-(r**2) + influence_coeffs[l]*r - (f**2) + coalition_coeffs[l]*f)
 
-ddp = DDP([lambda x, u: dynamics_b(x, u, l) for l in range(3)],  # x(i+1) = f(x(i), u)
+ddp = DDP([lambda x, u: dynamics(x, u, l) for l in range(3)],  # x(i+1) = f(x(i), u)
           lambda x, u: x,  # l(x, u)
           lambda x: x,  # lf(x)
           1,
@@ -40,7 +40,7 @@ i = 0
 max_iter = 30
 threshold = 0
 delta = np.inf
-while i < max_iter and delta < threshold:
+while i < max_iter and delta > threshold:
     k_seq, kk_seq = ddp.backward(x_seq, u_seq)
     x_seq, u_seq = ddp.forward(x_seq, u_seq, k_seq, kk_seq)
     print(x_seq)
