@@ -19,15 +19,16 @@ def dynamics(r, f, l):
     return r*r*influence_coeffs[l]+f*coalition_coeffs[l]
 
 def dynamics_b(r,f,l):
-    return 1.5** (-(r**2) + influence_coeffs[l]*r - (f**2) + coalition_coeffs[l]*f)
+    return -(r**2) + influence_coeffs[l]*r - (f**2) + coalition_coeffs[l]*f
 
-ddp = DDP([lambda x, u: dynamics(x, u, l) for l in range(3)],  # x(i+1) = f(x(i), u)
+ddp = DDP([lambda x, u: dynamics_b(x, u, l) for l in range(3)],  # x(i+1) = f(x(i), u)
           lambda x, u: x,  # l(x, u)
           lambda x: x,  # lf(x)
           1,
           1,
           3,
-          incidence_mat)
+          incidence_mat,
+          constraint_type='Nne')
 
 u_seq = np.zeros((3,))
 x_seq = [-1.0]

@@ -14,7 +14,7 @@ def main():
 
     task_planning = TaskGraph(**track_args['exp'])
 
-    task_planning.initialize_solver_ddp()
+    task_planning.initialize_solver_ddp(**track_args['ddp'])
     task_planning.solve_ddp()
 
     for time in range(10):
