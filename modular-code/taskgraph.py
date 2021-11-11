@@ -113,7 +113,7 @@ class TaskGraph:
         # now for the cost
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
-    def initialize_solver_ddp(self):
+    def initialize_solver_ddp(self, constraint_type='qp'):
         # define graph
         num_nodes = 4
         edges = [(0, 1), (1, 2), (2, 3)]
@@ -121,14 +121,14 @@ class TaskGraph:
         coalition_coeffs = [None, 2, 2, 2]
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
-
         self.ddp = DDP([lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks-1)],  # x(i+1) = f(x(i), u)
                   lambda x, u: x,  # l(x, u)
                   lambda x: x,  # lf(x)
                   100,
                   1,
                   pred_time=self.num_tasks-1,
-                  inc_mat=self.reward_model.incidence_mat)
+                  inc_mat=self.reward_model.incidence_mat,
+                  constraint_type=constraint_type)
 
         self.last_u_seq = np.zeros((self.num_tasks-1,))
         self.last_x_seq = [0.01]
