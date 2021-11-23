@@ -129,7 +129,7 @@ class TaskGraph:
                   pred_time=self.num_tasks-1,
                   inc_mat=self.reward_model.incidence_mat,
                   constraint_type=constraint_type)
-
+        breakpoint()
         self.last_u_seq = np.zeros((self.num_tasks-1,))
         self.last_x_seq = [0.01]
         for l in range(0, self.ddp.pred_time):
@@ -139,17 +139,17 @@ class TaskGraph:
     def solve_ddp(self):
         i = 0
         max_iter = 30
-        threshold = 0
+        threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
         while i < max_iter and delta > threshold:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
-            print(self.last_x_seq)
-            print(self.last_u_seq)
+            print("states: ",self.last_x_seq)
+            print("actions: ",self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
-            print(delta)
+            print("iteration ", i-1, " delta: ", delta)
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
