@@ -91,7 +91,6 @@ class RewardModel:
         reward_func_val = agg_delta * rho
         mean = reward_func_val
         std = std_dev_func(reward_func_val)
-
         return mean, std
 
     def get_influence_agg_func(self, influence_agg_func_type):
@@ -210,6 +209,12 @@ class RewardModel:
     def dim_return(self, flow, param):
         return param[0] - param[2] * np.exp(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
+
+    def polynomial(self, flow, param):
+        val = 0
+        for i in range(len(param)):
+            val += param[i]*flow**i
+        return val
 
     def null(self, flow, param):
         """
