@@ -45,27 +45,28 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            f_x_t = f_x(x_seq[l], u_seq[l])
-            f_u_t = f_u(x_seq[l], u_seq[l])
-            q_x = l_x(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_u = l_u(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_xx = l_xx(x_seq[l], u_seq[l]) + \
+            f_x_t = f_x(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))
+            f_u_t = f_u(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))
+            q_x = l_x(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
+            q_u = l_u(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
+            q_xx = l_xx(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + \
               np.matmul(np.atleast_1d(np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_xx[l + 1]))), np.atleast_1d(f_x_t)) + \
-              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(x_seq[l], u_seq[l]))))
+              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])))))
             tmp = np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_xx[l + 1]))
-            q_uu = l_uu(x_seq[l], u_seq[l]) +  np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_uu(x_seq[l], u_seq[l])))
-            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_ux(x_seq[l], u_seq[l])))
+            q_uu = l_uu(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))))
+            q_ux = l_ux(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
                 inv_q_uu = np.array([[0.0]])
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
-            print(q_uu)
+            print('Quu: ', q_uu)
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
+            
             if self.constraint_type == 'qp':
                 nu, _ = q_uu.shape
                 print(q_x)
@@ -146,6 +147,7 @@ class DDP:
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
             else:
                 raise(NotImplementedError)
+
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
@@ -155,6 +157,8 @@ class DDP:
             kk_seq.append(kk)
         k_seq.reverse()
         kk_seq.reverse()
+        print('k_seq: ',k_seq)
+        print('kk_seq: ', kk_seq)
         return k_seq, kk_seq
 
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
@@ -165,6 +169,10 @@ class DDP:
             u_seq_hat[t] = np.clip(u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
         return x_seq_hat, u_seq_hat
+
+    def compare_func(self, func):
+        for i in range(10):
+            print(func(np.array([0],dtype=float),np.array([i],dtype=float)))
 """
 env = gym.make('CartPoleContinuous-v0').env
 obs = env.reset()
