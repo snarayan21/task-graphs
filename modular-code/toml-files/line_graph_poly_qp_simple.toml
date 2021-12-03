@@ -1,7 +1,7 @@
 [exp]
 
 edges = [[0,1], [1,2]]
-num_tasks = 3
+num_tasks = 2
 
 numrobots = 4
 coalition_types = ["null", "polynomial", "polynomial", "polynomial"] # polynomial function is param[0] + param[1]*x + param[2]*x^2 ....

@@ -1,7 +1,7 @@
 import numpy as np
-from pydrake.solvers.mathematicalprogram import MathematicalProgram
-from pydrake.solvers.mathematicalprogram import Solve
-import pydrake.math as math
+#from pydrake.solvers.mathematicalprogram import MathematicalProgram
+#from pydrake.solvers.mathematicalprogram import Solve
+#import pydrake.math as math
 import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
@@ -122,19 +122,19 @@ class TaskGraph:
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         self.ddp = DDP([lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks-1)],  # x(i+1) = f(x(i), u)
-                  lambda x, u: x,  # l(x, u)
-                  lambda x: x,  # lf(x)
+                  lambda x, u: -x,  # l(x, u)
+                  lambda x: -x,  # lf(x)
                   100,
                   1,
                   pred_time=self.num_tasks-1,
                   inc_mat=self.reward_model.incidence_mat,
                   constraint_type=constraint_type)
-        breakpoint()
-        self.last_u_seq = np.zeros((self.num_tasks-1,))
+        self.last_u_seq = np.ones((self.num_tasks-1,))
         self.last_x_seq = [0.01]
         for l in range(0, self.ddp.pred_time):
             self.last_x_seq.append(dynamics_func_handle(self.last_x_seq[l], self.last_u_seq[l], l + 1))
         #print(x_seq)
+        #breakpoint()
 
     def solve_ddp(self):
         i = 0

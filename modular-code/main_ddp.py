@@ -8,6 +8,7 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
+    parser.add_argument('-milp', action='store_true', default=False, help='include -milp flag to additionally solve graph with MILP')
     args = parser.parse_args()
 
     track_args = toml.load(args.cfg)
@@ -17,6 +18,12 @@ def main():
     task_planning.initialize_solver_ddp(**track_args['ddp'])
     task_planning.solve_ddp()
 
+    if args.milp:
+        milp_solver = TaskGraph(**track_args['exp'])
+        milp_solver.initializeSolver()
+        milp_solver.solveGraph()
+
+    breakpoint()
     for time in range(10):
         # induce a disturbance or change in task characteristics
         # task_planning.update_reward_curves()  # TODO: introduce adaptive piece here

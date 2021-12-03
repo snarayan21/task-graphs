@@ -155,6 +155,7 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux.T), np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
+            #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
         print('k_seq: ',k_seq)

@@ -88,7 +88,7 @@ class RewardModel:
             return 0.1 * val
 
         agg_delta = influence_agg_func(deltas)
-        reward_func_val = agg_delta * rho
+        reward_func_val = agg_delta + rho
         mean = reward_func_val
         std = std_dev_func(reward_func_val)
         return mean, std
@@ -139,7 +139,7 @@ class RewardModel:
             node_coalition = self._compute_node_coalition(l, sum_u)
             reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
             return reward_mean
-
+        breakpoint()
         return dynamics
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
@@ -214,6 +214,7 @@ class RewardModel:
         val = 0
         for i in range(len(param)):
             val += param[i]*flow**i
+            #print('poly ', i, flow, val)
         return val
 
     def null(self, flow, param):
@@ -227,4 +228,11 @@ class RewardModel:
         return np.prod(np.array(deltas))
 
     def influence_agg_or(self, deltas):
+        #print('or ', deltas, np.sum(np.array(deltas)))
         return np.sum(np.array(deltas))
+
+    def compare_func(self, func):
+        for l in range(3):
+            print('l = ', l)
+            for i in range(10):
+                print(func(np.array([0])[0],np.array([i])[0],l))

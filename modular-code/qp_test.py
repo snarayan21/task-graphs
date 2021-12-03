@@ -21,6 +21,9 @@ def dynamics(r, f, l):
 def dynamics_b(r,f,l):
     return -(r**2) + influence_coeffs[l]*r - (f**2) + coalition_coeffs[l]*f
 
+def dynamics_c(r,f,l):
+    return (r**2) + 2*influence_coeffs[l]*r + coalition_coeffs[l]*f
+
 dynamics_f = dynamics_b
 
 ddp = DDP([lambda x, u: dynamics_f(x, u, l) for l in range(num_nodes-1)],  # x(i+1) = f(x(i), u)
