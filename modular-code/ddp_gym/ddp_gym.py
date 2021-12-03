@@ -84,16 +84,25 @@ class DDP:
             if(l == self.pred_time - 1):
                 #constraint on p doesn't take place if we are at last node. Only z slack variable
                 P = np.copy(q_uu)
-                P = np.hstack((P, np.zeros((P.shape[0], 1))))
-                P = np.vstack((P, np.zeros((1, P.shape[1]))))
+                P = np.hstack((P, np.zeros((P.shape[0], 2))))
+                P = np.vstack((P, np.zeros((2, P.shape[1]))))
                 P = cvxopt_matrix(P, tc='d')
                 q = np.copy(q_x)
-                q = np.vstack((q, np.zeros((1,1))))
-                A = np.ones((1, nu+1))
-                b = np.array([1 - u])
-                G = np.zeros((1, nu+1))
-                G[0][-1] = -1
-                h = np.zeros((1, 1))
+                q = np.vstack((q, np.zeros((2,1))))
+                #A = np.ones((1, nu+1))
+                A[0][-2] = 1
+                A[0][-1] = 0
+                A[1][-2] = 0
+                A[1][-1] = -1
+                #b = np.array([1 - u])
+                b = np.array([1-u, -u])
+                #G = np.zeros((1, nu+1))
+                G = np.zeros((2, nu+2))
+                G[0][-2] = -1
+                G[1][-1] = -1
+                h = np.zeros((2,1))
+                #G[0][-1] = -1
+                #h = np.zeros((1, 1))
 
                 P = cvxopt_matrix(P, tc='d')
                 q = cvxopt_matrix(q, tc='d')
@@ -109,18 +118,34 @@ class DDP:
 
             else:
                 P = np.copy(q_uu)
-                P = np.hstack((P, np.zeros((P.shape[0], 2))))
-                P = np.vstack((P, np.zeros((2, P.shape[1]))))
+                P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                P = np.vstack((P, np.zeros((3, P.shape[1]))))
                 q = np.copy(q_x)
-                q = np.vstack((q, np.zeros((2,1))))
-                A = np.full((1, nu+2), 2)
-                A[0][-1] = 1
-                A[0][-2] = 1
-                b = np.array([1 + p - (2*u)])
-                G = np.zeros((2, nu+2))
-                G[0][-1] = 1
-                G[1][-1] = -1
-                h = np.zeros((2, 1))
+                q = np.vstack((q, np.zeros((3,1)))) 
+                #A = np.full((1, nu+2), 2)               
+                A = np.full((3, nu+3), 1)
+                #Adu + y = p-u
+                A[0][-3] = 1
+                A[0][-2] = 0
+                A[0][-1] = 0
+                #Adu + z = 1-u
+                A[1][-3] = 0
+                A[1][-2] = 1
+                A[2][-1] = 0
+                #Adu - x = u
+                A[2][-3] = 0
+                A[2][-2] = 0
+                A[2][-1] = -1
+                #b = np.array([1 + p - (2*u)])
+                b = np.array([p-u, 1-u, -u])
+                #G = np.zeros((2, nu+2))
+                #G[0][-1] = 1
+                #G[1][-1] = -1
+                G = np.zeros((3, nu+3))
+                G[0][-3] = 1
+                G[1][-2] = -1
+                G[2][-1] = -1
+                h = np.zeros((3, 1))
 
                 P = cvxopt_matrix(P, tc='d')
                 q = cvxopt_matrix(q, tc='d')
