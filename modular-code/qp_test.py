@@ -43,8 +43,8 @@ delta = np.inf
 while i < max_iter and delta > threshold:
     k_seq, kk_seq = ddp.backward(x_seq, u_seq)
     x_seq, u_seq = ddp.forward(x_seq, u_seq, k_seq, kk_seq)
-    print(x_seq)
-    print(u_seq)
+    print("x:", x_seq)
+    print("u:", u_seq)
     i += 1
     delta = np.linalg.norm(np.array(u_seq) - np.array(prev_u_seq))
     print(delta)

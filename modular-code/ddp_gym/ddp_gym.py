@@ -90,16 +90,17 @@ class DDP:
                 q = np.copy(q_x)
                 q = np.vstack((q, np.zeros((2,1))))
                 #A = np.ones((1, nu+1))
+                A = np.full((2, nu+2), 1)
                 A[0][-2] = 1
                 A[0][-1] = 0
                 A[1][-2] = 0
-                A[1][-1] = -1
+                A[1][-1] = 1
                 #b = np.array([1 - u])
                 b = np.array([1-u, -u])
                 #G = np.zeros((1, nu+1))
                 G = np.zeros((2, nu+2))
                 G[0][-2] = -1
-                G[1][-1] = -1
+                G[1][-1] = 1
                 h = np.zeros((2,1))
                 #G[0][-1] = -1
                 #h = np.zeros((1, 1))
@@ -114,7 +115,7 @@ class DDP:
                 soln = cvxopt_solvers.qp(P, q, G, h, A, b)
                 sols = np.array(soln['x']).reshape(1,-1)[0]
                 print("SOLUTION: ", sols)
-                solns = sols[:-1]
+                solns = sols[:-2]
 
             else:
                 P = np.copy(q_uu)
@@ -124,18 +125,27 @@ class DDP:
                 q = np.vstack((q, np.zeros((3,1)))) 
                 #A = np.full((1, nu+2), 2)               
                 A = np.full((3, nu+3), 1)
+                #u + Adu >= p
+                #Adu >= p-u
                 #Adu + y = p-u
+                #y <= 0
                 A[0][-3] = 1
                 A[0][-2] = 0
                 A[0][-1] = 0
+                #u + Adu <= 1
+                #Adu <= 1-u
                 #Adu + z = 1-u
+                #z >= 0
                 A[1][-3] = 0
                 A[1][-2] = 1
                 A[2][-1] = 0
-                #Adu - x = u
+                #u + Adu >= 0
+                #Adu >= -u
+                #Adu + x = -u
+                #x <= 0
                 A[2][-3] = 0
                 A[2][-2] = 0
-                A[2][-1] = -1
+                A[2][-1] = 1
                 #b = np.array([1 + p - (2*u)])
                 b = np.array([p-u, 1-u, -u])
                 #G = np.zeros((2, nu+2))
@@ -144,7 +154,7 @@ class DDP:
                 G = np.zeros((3, nu+3))
                 G[0][-3] = 1
                 G[1][-2] = -1
-                G[2][-1] = -1
+                G[2][-1] = 1
                 h = np.zeros((3, 1))
 
                 P = cvxopt_matrix(P, tc='d')
@@ -157,7 +167,7 @@ class DDP:
                 soln = cvxopt_solvers.qp(P, q, G, h, A, b)
                 sols = np.array(soln['x']).reshape(1,-1)[0]
                 print("SOLUTION: ", sols)
-                solns = sols[-2]
+                solns = sols[:-3]
  
             k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
             knew = np.atleast_1d(solns)
