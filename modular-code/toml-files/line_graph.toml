@@ -13,4 +13,4 @@ dependency_params = [[0, 0, 0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0]]
 aggs = ["and", "and", "and", "and"] #aggregation functions for the influence function agg
 
 [ddp]
-constraint_type='None' #'qp' or 'None'
+constraint_type='qp' #'qp' or 'None'

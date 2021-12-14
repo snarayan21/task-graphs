@@ -25,6 +25,7 @@ class DDP:
         self.lf_x = grad(self.lf)
         self.lf_xx = jacobian(self.lf_x)
         self.incmat = inc_mat
+        self.constraint_type = constraint_type
 
 
     def backward(self, x_seq, u_seq):
@@ -62,16 +63,13 @@ class DDP:
             except np.linalg.LinAlgError:
                 inv_q_uu = np.array([[0.0]])
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
-            print(q_uu)
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
 
             if self.constraint_type == 'qp':
 
                 nu, _ = q_uu.shape
-                print(q_x)
                 curr_inc_mat = self.incmat[l+1]
-                print(curr_inc_mat)
                 #curr node inflow
                 u = 0.0
                 for i in range(len(curr_inc_mat)):
@@ -118,6 +116,8 @@ class DDP:
                     
                     soln = cvxopt_solvers.qp(P, q, G, h, A, b)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
+                    print("p is:", p)
+                    print("u is:", u)
                     print("SOLUTION: ", sols)
                     solns = sols[:-2]
 
@@ -142,7 +142,7 @@ class DDP:
                     #z >= 0
                     A[1][-3] = 0
                     A[1][-2] = 1
-                    A[2][-1] = 0
+                    A[1][-1] = 0
                     #u + Adu >= 0
                     #Adu >= -u
                     #Adu + x = -u
@@ -150,6 +150,7 @@ class DDP:
                     A[2][-3] = 0
                     A[2][-2] = 0
                     A[2][-1] = 1
+                    print(A)
                     #b = np.array([1 + p - (2*u)])
                     b = np.array([p-u, 1-u, -u])
                     #G = np.zeros((2, nu+2))
@@ -169,7 +170,12 @@ class DDP:
                     h= cvxopt_matrix(h, tc='d')
 
                     soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                    print("orig soln array:", np.array(soln['x']))
                     sols = np.array(soln['x']).reshape(1,-1)[0]
+                    print("p is:", p)
+                    print("u is:", u)
+                    print("1-u is:", 1-u)
+                    print("Adu + z is:", sols[0] + sols[2])
                     print("SOLUTION: ", sols)
                     solns = sols[:-3]
 
@@ -183,7 +189,6 @@ class DDP:
             else:
                 raise(NotImplementedError)
             
-            k = knew
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
