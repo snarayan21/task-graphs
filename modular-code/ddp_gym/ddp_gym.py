@@ -12,8 +12,7 @@ class DDP:
                  umax, 
                  state_dim, 
                  pred_time,
-                 inc_mat,
-                 constraint_type='qp'):
+                 inc_mat):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -25,7 +24,6 @@ class DDP:
         self.lf_x = grad(self.lf)
         self.lf_xx = jacobian(self.lf_x)
         self.incmat = inc_mat
-        self.constraint_type = constraint_type
 
 
     def backward(self, x_seq, u_seq):
@@ -45,109 +43,137 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            f_x_t = f_x(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))
-            f_u_t = f_u(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))
-            q_x = l_x(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_u = l_u(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_xx = l_xx(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + \
+            f_x_t = f_x(x_seq[l], u_seq[l])
+            f_u_t = f_u(x_seq[l], u_seq[l])
+            q_x = l_x(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
+            q_u = l_u(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
+            q_xx = l_xx(x_seq[l], u_seq[l]) + \
               np.matmul(np.atleast_1d(np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_xx[l + 1]))), np.atleast_1d(f_x_t)) + \
-              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])))))
+              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(x_seq[l], u_seq[l]))))
             tmp = np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_xx[l + 1]))
-            q_uu = l_uu(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))))
-            q_ux = l_ux(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x_seq[l]), np.atleast_1d(u_seq[l]))))
+            q_uu = l_uu(x_seq[l], u_seq[l]) +  np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_uu(x_seq[l], u_seq[l])))
+            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_ux(x_seq[l], u_seq[l])))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
                 inv_q_uu = np.array([[0.0]])
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
-            print('Quu: ', q_uu)
+            print(q_uu)
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
+            nu, _ = q_uu.shape
+            print(q_x)
+            curr_inc_mat = self.incmat[l+1]
+            print(curr_inc_mat)
+            #curr node inflow
+            u = 0.0
+            for i in range(len(curr_inc_mat)):
+                if(curr_inc_mat[i] == 1):
+                    u += u_seq[i]
+            #curr node outflow
+            p = 0.0
+            for i in range(len(curr_inc_mat)):
+                if(curr_inc_mat[i] == -1):
+                    p += u_seq[i]
+
+            solns = np.zeros(nu)
             
-            if self.constraint_type == 'qp':
-                nu, _ = q_uu.shape
-                print(q_x)
-                curr_inc_mat = self.incmat[l+1]
-                print(curr_inc_mat)
-                #curr node inflow
-                u = 0.0
-                for i in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[i] == 1):
-                        u += u_seq[i]
-                #curr node outflow
-                p = 0.0
-                for i in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[i] == -1):
-                        p += u_seq[i]
+            if(l == self.pred_time - 1):
+                #constraint on p doesn't take place if we are at last node. Only z slack variable
+                P = np.copy(q_uu)
+                P = np.hstack((P, np.zeros((P.shape[0], 2))))
+                P = np.vstack((P, np.zeros((2, P.shape[1]))))
+                P = cvxopt_matrix(P, tc='d')
+                q = np.copy(q_x)
+                q = np.vstack((q, np.zeros((2,1))))
+                #A = np.ones((1, nu+1))
+                A = np.full((2, nu+2), 1)
+                A[0][-2] = 1
+                A[0][-1] = 0
+                A[1][-2] = 0
+                A[1][-1] = 1
+                #b = np.array([1 - u])
+                b = np.array([1-u, -u])
+                #G = np.zeros((1, nu+1))
+                G = np.zeros((2, nu+2))
+                G[0][-2] = -1
+                G[1][-1] = 1
+                h = np.zeros((2,1))
+                #G[0][-1] = -1
+                #h = np.zeros((1, 1))
 
-                solns = np.zeros(nu)
+                P = cvxopt_matrix(P, tc='d')
+                q = cvxopt_matrix(q, tc='d')
+                A = cvxopt_matrix(A, tc='d')
+                b = cvxopt_matrix(b, tc='d')
+                G = cvxopt_matrix(G, tc='d')
+                h= cvxopt_matrix(h, tc='d')
+                
+                soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                sols = np.array(soln['x']).reshape(1,-1)[0]
+                print("SOLUTION: ", sols)
+                solns = sols[:-2]
 
-                if(l == self.pred_time - 1):
-                    #constraint on p doesn't take place if we are at last node. Only z slack variable
-                    P = np.copy(q_uu)
-                    P = np.hstack((P, np.zeros((P.shape[0], 1))))
-                    P = np.vstack((P, np.zeros((1, P.shape[1]))))
-                    P = cvxopt_matrix(P, tc='d')
-                    q = np.copy(q_x)
-                    q = np.vstack((q, np.zeros((1,1))))
-                    A = np.ones((1, nu+1))
-                    b = np.array([1 - u])
-                    G = np.zeros((1, nu+1))
-                    G[0][-1] = -1
-                    h = np.zeros((1, 1))
-
-                    P = cvxopt_matrix(P, tc='d')
-                    q = cvxopt_matrix(q, tc='d')
-                    A = cvxopt_matrix(A, tc='d')
-                    b = cvxopt_matrix(b, tc='d')
-                    G = cvxopt_matrix(G, tc='d')
-                    h= cvxopt_matrix(h, tc='d')
-
-                    soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    sols = np.array(soln['x']).reshape(1,-1)[0]
-                    print("SOLUTION: ", sols)
-                    solns = sols[:-1]
-
-                else:
-                    P = np.copy(q_uu)
-                    P = np.hstack((P, np.zeros((P.shape[0], 2))))
-                    P = np.vstack((P, np.zeros((2, P.shape[1]))))
-                    q = np.copy(q_x)
-                    q = np.vstack((q, np.zeros((2,1))))
-                    A = np.full((1, nu+2), 2)
-                    A[0][-1] = 1
-                    A[0][-2] = 1
-                    b = np.array([1 + p - (2*u)])
-                    G = np.zeros((2, nu+2))
-                    G[0][-1] = 1
-                    G[1][-1] = -1
-                    h = np.zeros((2, 1))
-
-                    P = cvxopt_matrix(P, tc='d')
-                    q = cvxopt_matrix(q, tc='d')
-                    A = cvxopt_matrix(A, tc='d')
-                    b = cvxopt_matrix(b, tc='d')
-                    G = cvxopt_matrix(G, tc='d')
-                    h= cvxopt_matrix(h, tc='d')
-
-                    soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    sols = np.array(soln['x']).reshape(1,-1)[0]
-                    print("SOLUTION: ", sols)
-                    solns = sols[-2]
-
-                k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
-                knew = np.atleast_1d(solns)
-                print("k is: ", k)
-                print("knew is: ", knew)
-                k = knew
-            elif self.constraint_type == 'None':
-                k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
             else:
-                raise(NotImplementedError)
+                P = np.copy(q_uu)
+                P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                q = np.copy(q_x)
+                q = np.vstack((q, np.zeros((3,1)))) 
+                #A = np.full((1, nu+2), 2)               
+                A = np.full((3, nu+3), 1)
+                #u + Adu >= p
+                #Adu >= p-u
+                #Adu + y = p-u
+                #y <= 0
+                A[0][-3] = 1
+                A[0][-2] = 0
+                A[0][-1] = 0
+                #u + Adu <= 1
+                #Adu <= 1-u
+                #Adu + z = 1-u
+                #z >= 0
+                A[1][-3] = 0
+                A[1][-2] = 1
+                A[2][-1] = 0
+                #u + Adu >= 0
+                #Adu >= -u
+                #Adu + x = -u
+                #x <= 0
+                A[2][-3] = 0
+                A[2][-2] = 0
+                A[2][-1] = 1
+                #b = np.array([1 + p - (2*u)])
+                b = np.array([p-u, 1-u, -u])
+                #G = np.zeros((2, nu+2))
+                #G[0][-1] = 1
+                #G[1][-1] = -1
+                G = np.zeros((3, nu+3))
+                G[0][-3] = 1
+                G[1][-2] = -1
+                G[2][-1] = 1
+                h = np.zeros((3, 1))
 
+                P = cvxopt_matrix(P, tc='d')
+                q = cvxopt_matrix(q, tc='d')
+                A = cvxopt_matrix(A, tc='d')
+                b = cvxopt_matrix(b, tc='d')
+                G = cvxopt_matrix(G, tc='d')
+                h= cvxopt_matrix(h, tc='d')
+
+                soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                sols = np.array(soln['x']).reshape(1,-1)[0]
+                print("SOLUTION: ", sols)
+                solns = sols[:-3]
+ 
+            k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
+            knew = np.atleast_1d(solns)
+            print("k is: ", k)
+            print("knew is: ", knew)
+            k = knew
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
@@ -155,11 +181,8 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux.T), np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
-            #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
-        print('k_seq: ',k_seq)
-        print('kk_seq: ', kk_seq)
         return k_seq, kk_seq
 
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
@@ -170,10 +193,6 @@ class DDP:
             u_seq_hat[t] = np.clip(u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
         return x_seq_hat, u_seq_hat
-
-    def compare_func(self, func):
-        for i in range(10):
-            print(func(np.array([0],dtype=float),np.array([i],dtype=float)))
 """
 env = gym.make('CartPoleContinuous-v0').env
 obs = env.reset()
@@ -186,7 +205,6 @@ u_seq = [np.zeros(1) for _ in range(ddp.pred_time)]
 x_seq = [obs.copy()]
 for t in range(ddp.pred_time):
     x_seq.append(env._state_eq(x_seq[-1], u_seq[t]))
-
 cnt = 0
 while True:
     env.render(mode="rgb_array")
@@ -195,7 +213,6 @@ while True:
     for _ in range(3):
         k_seq, kk_seq = ddp.backward(x_seq, u_seq)
         x_seq, u_seq = ddp.forward(x_seq, u_seq, k_seq, kk_seq)
-
     print(u_seq.T)
     obs, _, _, _ = env.step(u_seq[0])
     x_seq[0] = obs.copy()
