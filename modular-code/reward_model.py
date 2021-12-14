@@ -139,7 +139,7 @@ class RewardModel:
             node_coalition = self._compute_node_coalition(l, sum_u)
             reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
             return reward_mean
-        breakpoint()
+        #breakpoint()
         return dynamics
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):

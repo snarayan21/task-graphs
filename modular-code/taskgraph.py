@@ -86,7 +86,7 @@ class TaskGraph:
 
         self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
-    def initializeSolver(self):
+    """ def initializeSolver(self):
         '''
         This function will define variables, functions, and bounds based on the input info
         :return:
@@ -111,7 +111,7 @@ class TaskGraph:
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
-        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
+        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow) """
 
     def initialize_solver_ddp(self, constraint_type='qp'):
         # define graph
@@ -154,11 +154,7 @@ class TaskGraph:
 
         self.flow = self.last_u_seq
 
-    def solveGraph(self):
-        """
-        Solves the optimization program and computes the flow
-        :return:
-        """
+    """ def solveGraph(self):
         result = Solve(self.prog)
         print("Success? ", result.is_success())
 
@@ -166,7 +162,7 @@ class TaskGraph:
         print('solver is: ', result.get_solver_id().name())
         # Compute coalition values,
         self.flow = result.GetSolution(self.var_flow)
-        print('f* = ', self.flow)
+        print('f* = ', self.flow) """
 
     def simulate_task_execution(self):
         """
