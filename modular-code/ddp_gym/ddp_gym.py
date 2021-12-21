@@ -210,7 +210,6 @@ u_seq = [np.zeros(1) for _ in range(ddp.pred_time)]
 x_seq = [obs.copy()]
 for t in range(ddp.pred_time):
     x_seq.append(env._state_eq(x_seq[-1], u_seq[t]))
-
 cnt = 0
 while True:
     env.render(mode="rgb_array")
@@ -219,7 +218,6 @@ while True:
     for _ in range(3):
         k_seq, kk_seq = ddp.backward(x_seq, u_seq)
         x_seq, u_seq = ddp.forward(x_seq, u_seq, k_seq, kk_seq)
-
     print(u_seq.T)
     obs, _, _, _ = env.step(u_seq[0])
     x_seq[0] = obs.copy()
