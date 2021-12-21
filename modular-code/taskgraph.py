@@ -1,6 +1,6 @@
 import numpy as np
-#from pydrake.solvers.mathematicalprogram import MathematicalProgram
-#from pydrake.solvers.mathematicalprogram import Solve
+from pydrake.solvers.mathematicalprogram import MathematicalProgram
+from pydrake.solvers.mathematicalprogram import Solve
 #import pydrake.math as math
 import matplotlib.pyplot as plt
 import matplotlib
@@ -121,20 +121,28 @@ class TaskGraph:
         coalition_coeffs = [None, 2, 2, 2]
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
-        self.ddp = DDP([lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks-1)],  # x(i+1) = f(x(i), u)
-                  lambda x, u: -x,  # l(x, u)
-                  lambda x: -x,  # lf(x)
+        dynamics_func_handle_list = []
+        cost_func_handle_list = []
+        for k in range(self.num_tasks):
+            dynamics_func_handle_list.append(lambda x, u: dynamics_func_handle(x,u,k))
+            cost_func_handle_list.append(lambda x, u: -1*dynamics_func_handle(x,u,k))
+
+        self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
+                  cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
+                  lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
                   pred_time=self.num_tasks-1,
                   inc_mat=self.reward_model.incidence_mat,
+                  adj_mat=self.reward_model.adjacency_mat,
                   constraint_type=constraint_type)
         self.last_u_seq = np.ones((self.num_tasks-1,))
         self.last_x_seq = [0.01]
         for l in range(0, self.ddp.pred_time):
+            #breakpoint()
             self.last_x_seq.append(dynamics_func_handle(self.last_x_seq[l], self.last_u_seq[l], l + 1))
-        #print(x_seq)
-        #breakpoint()
+        print('Initial x_seq: ',self.last_x_seq)
+        breakpoint()
 
     def solve_ddp(self):
         i = 0
@@ -144,12 +152,14 @@ class TaskGraph:
         prev_u_seq = copy(self.last_u_seq)
         while i < max_iter and delta > threshold:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
+            breakpoint()
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
             print("states: ",self.last_x_seq)
             print("actions: ",self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
+            print("reward: ", -np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
@@ -161,7 +171,8 @@ class TaskGraph:
         """
         result = Solve(self.prog)
         print("Success? ", result.is_success())
-
+        breakpoint()
+        self.reward_model.flow_cost(result.GetSolution(self.var_flow))
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
         # Compute coalition values,

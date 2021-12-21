@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import norm
+from pydrake.autodiffutils import AutoDiffXd
 import networkx as nx
 import autograd
 import math
@@ -16,7 +17,7 @@ class RewardModel:
         self.task_graph = task_graph
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
-
+        self.adjacency_mat = nx.linalg.graphmatrix.adjacency_matrix(self.task_graph).A
 
         self.coalition_params = coalition_params
         self.coalition_types = coalition_types
@@ -29,6 +30,7 @@ class RewardModel:
         Computes the cost function value over the entire task graph
         :return:
         """
+        #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
     def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False):
@@ -48,10 +50,13 @@ class RewardModel:
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
         for node_i in range(self.num_tasks):
+            if node_i == 4:
+                breakpoint()
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
             # influencing nodes of node i
+
             if eval:
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
@@ -64,6 +69,7 @@ class RewardModel:
                                                                                                      node_coalition,
                                                                                                      var_reward_mean,
                                                                                                      var_reward_stddev)
+            #breakpoint()
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
@@ -155,7 +161,7 @@ class RewardModel:
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
-
+        print(node_i,node_coalition)
         task_influence_value = []
         list_ind = 0
         for edge in incoming_edges:
@@ -172,6 +178,7 @@ class RewardModel:
                     task_influence_value.append(task_interdep(reward_mean,
                                                               self.dependency_params[edge_id]))
                 else:
+                    breakpoint()
                     # we passed in a list of only incoming edges flow
                     task_influence_value.append(task_interdep(reward_mean[list_ind],
                                                               self.dependency_params[edge_id]))
@@ -204,6 +211,8 @@ class RewardModel:
         return D_incoming @ f
 
     def sigmoid(self, flow, param):
+        if type(flow) is AutoDiffXd:
+            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
         return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
