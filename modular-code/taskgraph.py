@@ -119,9 +119,10 @@ class TaskGraph:
         coalition_coeffs = [None, 2, 2, 2]
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
-        dynamics_func_handle_list = []
+        dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
+                                       # entry i corresponds to the equation for the reward at node i+1
         cost_func_handle_list = []
-        for k in range(self.num_tasks):
+        for k in range(1, self.num_tasks):
             dynamics_func_handle_list.append(lambda x, u: dynamics_func_handle(x,u,k))
             cost_func_handle_list.append(lambda x, u: -1*dynamics_func_handle(x,u,k))
 
@@ -141,9 +142,10 @@ class TaskGraph:
         for l in range(0, self.ddp.pred_time):
             incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
             incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
-            incoming_rewards_arr = list(incoming_x_seq[l+1])
             breakpoint()
-            self.last_x_seq[l+1] = dynamics_func_handle(incoming_rewards_arr, self.last_u_seq[l], l + 1)
+            incoming_rewards_arr = list(incoming_x_seq[l])
+            incoming_flow_arr = list(incoming_u_seq[l+1])
+            self.last_x_seq[l+1] = dynamics_func_handle(incoming_rewards_arr, incoming_flow_arr, l + 1)
         print('Initial x_seq: ',self.last_x_seq)
         breakpoint()
 

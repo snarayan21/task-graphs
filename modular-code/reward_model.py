@@ -133,18 +133,18 @@ class RewardModel:
 
         :return: function handle that takes in (x[l], u[l], l) and returns x[l+1]
         """
-        def dynamics(x, u, l):
+        def dynamics(x, u, node_i):
             """
-            :arg x is the vector of rewards at the incoming neighborhood of node l+1.
-            :arg u is the vector of flows along the incoming edges to node l+1.
-            :arg l is the index of the preceding node
+            :arg x is the vector of rewards at the incoming neighborhood of node node_i.
+            :arg u is the vector of flows along the incoming edges to node node_i.
+            :arg node_i is the index of the node
             """
             if np.isscalar(u):
                 sum_u = u
             else:
                 sum_u = sum(u)
-            node_coalition = self._compute_node_coalition(l, sum_u)
-            reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
+            node_coalition = self._compute_node_coalition(node_i, sum_u)
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0)
             return reward_mean
         breakpoint()
         return dynamics
@@ -197,6 +197,7 @@ class RewardModel:
         """
         if node_i != 0 or node_i != self.num_tasks:
             coalition_function = getattr(self, self.coalition_types[node_i])
+            breakpoint()
             return coalition_function(f, param=self.coalition_params[node_i])
         else:
             # source and sink node has 0 coalition/reward

@@ -41,7 +41,7 @@ class DDP:
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
         k_seq = []
         kk_seq = []
-        for l in range(self.pred_time - 1, -1, -1):
+        for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
             l_x = grad(self.l[l], 0)
             l_u = grad(self.l[l], 1)
             l_xx = jacobian(l_x, 0)
@@ -52,18 +52,18 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            f_x_t = f_x(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l]))
+            f_x_t = f_x(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l]))
             print(l)
             breakpoint()
-            f_u_t = f_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l]))
-            q_x = l_x(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
-            q_u = l_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1]))
-            q_xx = l_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + \
+            f_u_t = f_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l]))
+            q_x = l_x(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
+            q_u = l_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1]))
+            q_xx = l_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + \
               np.matmul(np.atleast_2d(np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_xx[l + 1]))), np.atleast_2d(f_x_t)) + \
-              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])))))
+              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])))))
             tmp = np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_xx[l + 1]))
-            q_uu = l_uu(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l]))))
+            q_uu = l_uu(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l]))))
             #q_uu = np.array([[1.0]])
             if not np.all(np.linalg.eigvals(q_uu) > 0):
                 lam = -np.min(np.linalg.eigvals(q_uu))
@@ -73,8 +73,8 @@ class DDP:
                     q_uu = np.eye(q_uu.shape[0])*1.0 #TODO IS THIS REGULARIZATION????
 
                 print("regularizing Quu with lambda = ", lam)
-            q_ux = l_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l]))))
+            q_ux = l_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l]))))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
