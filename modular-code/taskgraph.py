@@ -31,7 +31,6 @@ class TaskGraph:
         # will hold our estimate values
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
                                         num_robots=self.num_robots,
-                                        edges=edges,
                                         task_graph=self.task_graph,
                                         coalition_params=coalition_params,
                                         coalition_types=coalition_types,
@@ -41,7 +40,6 @@ class TaskGraph:
 
         self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
                                 num_robots=self.num_robots,
-                                edges=edges,
                                 task_graph=self.task_graph,
                                 coalition_params=coalition_params,
                                 coalition_types=coalition_types,
@@ -84,7 +82,7 @@ class TaskGraph:
         # import pdb; pdb.set_trace()
         self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
 
-        self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
+        self.reward_modelself.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
     def initializeSolver(self):
         '''
@@ -135,12 +133,17 @@ class TaskGraph:
                   pred_time=self.num_tasks-1,
                   inc_mat=self.reward_model.incidence_mat,
                   adj_mat=self.reward_model.adjacency_mat,
+                  edgelist=self.reward_model.edges,
                   constraint_type=constraint_type)
-        self.last_u_seq = np.ones((self.num_tasks-1,))
-        self.last_x_seq = [0.01]
+        self.last_u_seq = list(range(self.num_tasks))# = np.ones((self.num_tasks,))
+        self.last_x_seq = np.zeros((self.num_tasks,))
+
         for l in range(0, self.ddp.pred_time):
-            #breakpoint()
-            self.last_x_seq.append(dynamics_func_handle(self.last_x_seq[l], self.last_u_seq[l], l + 1))
+            incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
+            incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
+            incoming_rewards_arr = list(incoming_x_seq[l+1])
+            breakpoint()
+            self.last_x_seq[l+1] = dynamics_func_handle(incoming_rewards_arr, self.last_u_seq[l], l + 1)
         print('Initial x_seq: ',self.last_x_seq)
         breakpoint()
 

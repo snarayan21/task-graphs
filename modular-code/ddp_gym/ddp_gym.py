@@ -14,6 +14,7 @@ class DDP:
                  pred_time,
                  inc_mat,
                  adj_mat,
+                 edgelist,
                  constraint_type='qp'):
         self.pred_time = pred_time
         self.umax = umax
@@ -27,6 +28,7 @@ class DDP:
         self.lf_xx = jacobian(self.lf_x)
         self.incmat = inc_mat
         self.adjmat = adj_mat
+        self.edgelist = edgelist
         self.constraint_type = constraint_type
 
 
@@ -36,6 +38,7 @@ class DDP:
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
         #TODO: make an incoming_x_seq that places the list of incoming node rewards to node l at index l
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
+        incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1):
@@ -64,8 +67,11 @@ class DDP:
             #q_uu = np.array([[1.0]])
             if not np.all(np.linalg.eigvals(q_uu) > 0):
                 lam = -np.min(np.linalg.eigvals(q_uu))
-                #q_uu = q_uu + np.eye(q_uu.shape[0])*lam
-                q_uu = -q_uu  #TODO IS THIS REGULARIZATION????
+                if q_uu.shape[0] == 1:
+                    q_uu = -q_uu  #TODO IS THIS REGULARIZATION????
+                else:
+                    q_uu = np.eye(q_uu.shape[0])*1.0 #TODO IS THIS REGULARIZATION????
+
                 print("regularizing Quu with lambda = ", lam)
             q_ux = l_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l])) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(u_seq[l]))))
@@ -187,6 +193,12 @@ class DDP:
         return x_seq_hat, u_seq_hat
 
     def x_seq_to_incoming_x_seq(self, x_seq):
+        """
+        :param x_seq: sequence of node reward values, where index i refers to the i'th nodes reward
+        :return: incoming_x_seq: a sequence of *incoming* reward values to each node, where the i'th index contains a
+                list of the incoming reward values to the i+1th node 
+                # TODO change this indexing ^^ it is dumb
+        """
         incoming_x_seq = []
         for k in range(1,len(x_seq)):
             in_nodes = [x_seq[i] for i, x in enumerate(self.adjmat[:,k]) if x==1]
@@ -194,6 +206,21 @@ class DDP:
         breakpoint()
         return incoming_x_seq
 
+    def u_seq_to_incoming_u_seq(self, u_seq):
+        """
+        :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
+        :return: incoming_u_seq: sequence of incoming flows, where index i corresponds to the list of incoming flows over
+                the edges that are incident to node i. An empty list is returned when node i is a source node.
+        """
+        incoming_u_seq = [[]]
+        for k in range(1,len(u_seq)):
+            in_node_indices = [i for i, x in enumerate(self.adjmat[:,k]) if x==1]
+            u_incoming = []
+            for in_node_ind in in_node_indices:
+                u_incoming.append(u_seq[self.edgelist.index([in_node_ind,k])])
+            incoming_u_seq.append(u_incoming)
+        breakpoint()
+        return incoming_u_seq
 
     def compare_func(self, func):
         for i in range(10):

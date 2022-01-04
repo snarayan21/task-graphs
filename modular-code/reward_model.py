@@ -8,13 +8,14 @@ import math
 
 class RewardModel:
 
-    def __init__(self, num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
+    def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
-        self.edges = edges
-        self.num_edges = len(self.edges)
         self.task_graph = task_graph
+        self.edges = [list(edge) for edge in self.task_graph.edges]
+        breakpoint()
+        self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
         self.adjacency_mat = nx.linalg.graphmatrix.adjacency_matrix(self.task_graph).A
@@ -161,7 +162,7 @@ class RewardModel:
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
-        print(node_i,node_coalition)
+        print("Computing node reward for NODE ",node_i, " with an incoming coalition of size ", node_coalition)
         task_influence_value = []
         list_ind = 0
         for edge in incoming_edges:
