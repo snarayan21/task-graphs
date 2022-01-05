@@ -58,6 +58,7 @@ class DDP:
             f_u_t = f_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l]))
             q_x = l_x(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
             q_u = l_u(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1]))
+            breakpoint()
             q_xx = l_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])) + \
               np.matmul(np.atleast_2d(np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_xx[l + 1]))), np.atleast_2d(f_x_t)) + \
               np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(incoming_x_seq[l]), np.atleast_1d(incoming_u_seq[l])))))
@@ -192,12 +193,12 @@ class DDP:
             x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
         return x_seq_hat, u_seq_hat
 
-    def x_seq_to_incoming_x_seq(self, x_seq):
+    def x_seq_to_incoming_x_seq(self, x_seq, l):
         """
         :param x_seq: sequence of node reward values, where index i refers to the i'th nodes reward
+        :param l: the node that should be listed first in
         :return: incoming_x_seq: a sequence of *incoming* reward values to each node, where the i'th index contains a
-                list of the incoming reward values to the i+1th node 
-                # TODO change this indexing ^^ it is dumb
+                list of the incoming reward values to the i+1th node
         """
         incoming_x_seq = []
         for k in range(1,len(x_seq)):
@@ -206,21 +207,23 @@ class DDP:
         breakpoint()
         return incoming_x_seq
 
-    def u_seq_to_incoming_u_seq(self, u_seq):
+    def u_seq_to_incoming_u_seq(self, u_seq, l):
         """
         :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
         :return: incoming_u_seq: sequence of incoming flows, where index i corresponds to the list of incoming flows over
-                the edges that are incident to node i. An empty list is returned when node i is a source node.
+                the edges that are incident to node i+1.
         """
-        incoming_u_seq = [[]]
+        incoming_u_seq = []
         for k in range(1,len(u_seq)):
             in_node_indices = [i for i, x in enumerate(self.adjmat[:,k]) if x==1]
             u_incoming = []
             for in_node_ind in in_node_indices:
-                u_incoming.append(u_seq[self.edgelist.index([in_node_ind,k])])
+                u_incoming.append(float(u_seq[self.edgelist.index([in_node_ind,k])]))
             incoming_u_seq.append(u_incoming)
         breakpoint()
         return incoming_u_seq
+
+
 
     def compare_func(self, func):
         for i in range(10):

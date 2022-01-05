@@ -146,6 +146,21 @@ class RewardModel:
             node_coalition = self._compute_node_coalition(node_i, sum_u)
             reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0)
             return reward_mean
+
+        def dynamics_b(x, u, node_i, additional_x, additional_x_index):
+            """
+            :arg x is the reward at node l, the
+            :arg u is the vector of flows along the incoming edges to node node_i.
+            :arg node_i is the index of the node
+            """
+            if np.isscalar(u):
+                sum_u = u
+            else:
+                sum_u = sum(u)
+            node_coalition = self._compute_node_coalition(node_i, sum_u)
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0)
+            return reward_mean
+
         breakpoint()
         return dynamics
 

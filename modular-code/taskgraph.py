@@ -144,7 +144,7 @@ class TaskGraph:
             incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
             breakpoint()
             incoming_rewards_arr = list(incoming_x_seq[l])
-            incoming_flow_arr = list(incoming_u_seq[l+1])
+            incoming_flow_arr = list(incoming_u_seq[l])
             self.last_x_seq[l+1] = dynamics_func_handle(incoming_rewards_arr, incoming_flow_arr, l + 1)
         print('Initial x_seq: ',self.last_x_seq)
         breakpoint()
