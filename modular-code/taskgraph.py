@@ -140,8 +140,8 @@ class TaskGraph:
         self.last_x_seq = np.zeros((self.num_tasks,))
 
         for l in range(0, self.ddp.pred_time):
-            incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
-            incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
+            incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq, l)
+            incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq, l)
             breakpoint()
             incoming_rewards_arr = list(incoming_x_seq[l])
             incoming_flow_arr = list(incoming_u_seq[l])

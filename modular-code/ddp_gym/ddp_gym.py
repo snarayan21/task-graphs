@@ -39,9 +39,15 @@ class DDP:
         #TODO: make an incoming_x_seq that places the list of incoming node rewards to node l at index l
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
+        incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
+            if l in incoming_node_list[l]:
+                l_position = incoming_node_list[l].index(l)
+            else:
+                l_position = None
+
             l_x = grad(self.l[l], 0)
             l_u = grad(self.l[l], 1)
             l_xx = jacobian(l_x, 0)
@@ -193,10 +199,9 @@ class DDP:
             x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
         return x_seq_hat, u_seq_hat
 
-    def x_seq_to_incoming_x_seq(self, x_seq, l):
+    def x_seq_to_incoming_x_seq(self, x_seq):
         """
         :param x_seq: sequence of node reward values, where index i refers to the i'th nodes reward
-        :param l: the node that should be listed first in
         :return: incoming_x_seq: a sequence of *incoming* reward values to each node, where the i'th index contains a
                 list of the incoming reward values to the i+1th node
         """
@@ -207,7 +212,7 @@ class DDP:
         breakpoint()
         return incoming_x_seq
 
-    def u_seq_to_incoming_u_seq(self, u_seq, l):
+    def u_seq_to_incoming_u_seq(self, u_seq):
         """
         :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
         :return: incoming_u_seq: sequence of incoming flows, where index i corresponds to the list of incoming flows over
@@ -222,6 +227,18 @@ class DDP:
             incoming_u_seq.append(u_incoming)
         breakpoint()
         return incoming_u_seq
+
+    def get_incoming_node_list(self):
+        """
+        :return: a list of lists of incoming neighbor nodes, where the i'th entry corresponds to a list of the
+        incoming neighbors of node i+1
+        """
+        incoming_list = []
+        for k in range(1,self.pred_time+1):
+            in_node_indices = [i for i, x in enumerate(self.adjmat[:,k]) if x==1]
+            incoming_list.append(in_node_indices)
+        breakpoint()
+        return incoming_list
 
 
 
