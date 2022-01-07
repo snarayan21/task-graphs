@@ -123,8 +123,8 @@ class TaskGraph:
                                        # entry i corresponds to the equation for the reward at node i+1
         cost_func_handle_list = []
         for k in range(1, self.num_tasks):
-            dynamics_func_handle_list.append(lambda x, u: dynamics_func_handle(x,u,k))
-            cost_func_handle_list.append(lambda x, u: -1*dynamics_func_handle(x,u,k))
+            dynamics_func_handle_list.append(lambda x, u, additional_x, l_index: dynamics_func_handle(x,u,k,additional_x,l_index))
+            cost_func_handle_list.append(lambda x, u, additional_x, l_index: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
 
         self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
                   cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
@@ -139,13 +139,24 @@ class TaskGraph:
         self.last_u_seq = list(range(self.num_tasks))# = np.ones((self.num_tasks,))
         self.last_x_seq = np.zeros((self.num_tasks,))
 
+        incoming_nodes = self.ddp.get_incoming_node_list()
         for l in range(0, self.ddp.pred_time):
             incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
             incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
-            breakpoint()
             incoming_rewards_arr = list(incoming_x_seq[l])
             incoming_flow_arr = list(incoming_u_seq[l])
-            self.last_x_seq[l+1] = dynamics_func_handle(incoming_rewards_arr, incoming_flow_arr, l + 1)
+            if l in incoming_nodes[l]:
+                l_ind = incoming_nodes[l].index(l)
+                x = incoming_rewards_arr[l_ind]
+                incoming_rewards_arr.pop(l_ind)
+                additional_x = incoming_rewards_arr
+            else:
+                l_ind = -1
+                additional_x = incoming_rewards_arr
+                x = None
+            breakpoint()
+
+            self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
         print('Initial x_seq: ',self.last_x_seq)
         breakpoint()
 

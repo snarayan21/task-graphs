@@ -153,10 +153,14 @@ class RewardModel:
             :arg u is the vector of flows along the incoming edges to node node_i.
             :arg node_i is the index of the node
             """
-
+            x = np.atleast_1d(x)
+            additional_x = np.atleast_1d(additional_x)
             # assemble x vector
-            if additional_x is not []:
-                full_x = additional_x.insert(l_index,x)
+            if (not additional_x.size == 0) and l_index != -1:
+                #full_x = np.insert(additional_x,l_index,x)
+                full_x = np.concatenate((additional_x[0:l_index],x,additional_x[l_index:len(additional_x)]))
+            elif l_index == -1:
+                full_x = additional_x
             else:
                 full_x = x
             if np.isscalar(u):
@@ -164,11 +168,12 @@ class RewardModel:
             else:
                 sum_u = sum(u)
             node_coalition = self._compute_node_coalition(node_i, sum_u)
+            breakpoint()
             reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, full_x, 0)
             return reward_mean
 
         breakpoint()
-        return dynamics
+        return dynamics_b
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
         """
@@ -200,13 +205,12 @@ class RewardModel:
                     task_influence_value.append(task_interdep(reward_mean,
                                                               self.dependency_params[edge_id]))
                 else:
-                    breakpoint()
                     # we passed in a list of only incoming edges flow
                     task_influence_value.append(task_interdep(reward_mean[list_ind],
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
-
+        breakpoint()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
