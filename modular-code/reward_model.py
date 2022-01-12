@@ -14,7 +14,7 @@ class RewardModel:
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
-        breakpoint()
+        #breakpoint()
         self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
@@ -51,8 +51,6 @@ class RewardModel:
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
         for node_i in range(self.num_tasks):
-            if node_i == 4:
-                breakpoint()
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
@@ -168,11 +166,11 @@ class RewardModel:
             else:
                 sum_u = sum(u)
             node_coalition = self._compute_node_coalition(node_i, sum_u)
-            breakpoint()
+            #breakpoint()
             reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, full_x, 0)
             return reward_mean
 
-        breakpoint()
+        #breakpoint()
         return dynamics_b
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
@@ -210,7 +208,7 @@ class RewardModel:
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
-        breakpoint()
+        #breakpoint()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
@@ -222,7 +220,7 @@ class RewardModel:
         """
         if node_i != 0 or node_i != self.num_tasks:
             coalition_function = getattr(self, self.coalition_types[node_i])
-            breakpoint()
+            #breakpoint()
             return coalition_function(f, param=self.coalition_params[node_i])
         else:
             # source and sink node has 0 coalition/reward

@@ -136,7 +136,7 @@ class TaskGraph:
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
                   constraint_type=constraint_type)
-        self.last_u_seq = list(range(self.num_tasks))# = np.ones((self.num_tasks,))
+        self.last_u_seq = np.ones((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
 
         incoming_nodes = self.ddp.get_incoming_node_list()
@@ -154,11 +154,11 @@ class TaskGraph:
                 l_ind = -1
                 additional_x = incoming_rewards_arr
                 x = None
-            breakpoint()
+            #breakpoint()
 
             self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
         print('Initial x_seq: ',self.last_x_seq)
-        breakpoint()
+        #breakpoint()
 
     def solve_ddp(self):
         i = 0
@@ -168,7 +168,7 @@ class TaskGraph:
         prev_u_seq = copy(self.last_u_seq)
         while i < max_iter and delta > threshold:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
-            breakpoint()
+            #breakpoint()
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
             print("states: ",self.last_x_seq)
             print("actions: ",self.last_u_seq)
