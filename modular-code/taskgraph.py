@@ -1,6 +1,6 @@
 import numpy as np
-#from pydrake.solvers.mathematicalprogram import MathematicalProgram
-#from pydrake.solvers.mathematicalprogram import Solve
+from pydrake.solvers.mathematicalprogram import MathematicalProgram
+from pydrake.solvers.mathematicalprogram import Solve
 #import pydrake.math as math
 import matplotlib.pyplot as plt
 import matplotlib
@@ -31,7 +31,6 @@ class TaskGraph:
         # will hold our estimate values
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
                                         num_robots=self.num_robots,
-                                        edges=edges,
                                         task_graph=self.task_graph,
                                         coalition_params=coalition_params,
                                         coalition_types=coalition_types,
@@ -41,7 +40,6 @@ class TaskGraph:
 
         self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
                                 num_robots=self.num_robots,
-                                edges=edges,
                                 task_graph=self.task_graph,
                                 coalition_params=coalition_params,
                                 coalition_types=coalition_types,
@@ -84,7 +82,7 @@ class TaskGraph:
         # import pdb; pdb.set_trace()
         self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
 
-        self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
+        self.reward_modelself.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
     """ def initializeSolver(self):
         '''
@@ -121,19 +119,45 @@ class TaskGraph:
         coalition_coeffs = [None, 2, 2, 2]
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
-        self.ddp = DDP([lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks-1)],  # x(i+1) = f(x(i), u)
-                  lambda x, u: -x,  # l(x, u)
-                  lambda x: -x,  # lf(x)
+        dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
+                                       # entry i corresponds to the equation for the reward at node i+1
+        cost_func_handle_list = []
+        for k in range(1, self.num_tasks):
+            dynamics_func_handle_list.append(lambda x, u, additional_x, l_index: dynamics_func_handle(x,u,k,additional_x,l_index))
+            cost_func_handle_list.append(lambda x, u, additional_x, l_index: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
+
+        self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
+                  cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
+                  lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
                   pred_time=self.num_tasks-1,
                   inc_mat=self.reward_model.incidence_mat,
+                  adj_mat=self.reward_model.adjacency_mat,
+                  edgelist=self.reward_model.edges,
                   constraint_type=constraint_type)
-        self.last_u_seq = np.ones((self.num_tasks-1,))
-        self.last_x_seq = [0.01]
+        self.last_u_seq = np.ones((self.num_edges,))#list(range(self.num_edges))
+        self.last_x_seq = np.zeros((self.num_tasks,))
+
+        incoming_nodes = self.ddp.get_incoming_node_list()
         for l in range(0, self.ddp.pred_time):
-            self.last_x_seq.append(dynamics_func_handle(self.last_x_seq[l], self.last_u_seq[l], l + 1))
-        #print(x_seq)
+            incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
+            incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
+            incoming_rewards_arr = list(incoming_x_seq[l])
+            incoming_flow_arr = list(incoming_u_seq[l])
+            if l in incoming_nodes[l]:
+                l_ind = incoming_nodes[l].index(l)
+                x = incoming_rewards_arr[l_ind]
+                incoming_rewards_arr.pop(l_ind)
+                additional_x = incoming_rewards_arr
+            else:
+                l_ind = -1
+                additional_x = incoming_rewards_arr
+                x = None
+            #breakpoint()
+
+            self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
+        print('Initial x_seq: ',self.last_x_seq)
         #breakpoint()
 
     def solve_ddp(self):
@@ -144,12 +168,14 @@ class TaskGraph:
         prev_u_seq = copy(self.last_u_seq)
         while i < max_iter and delta > threshold:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
+            #breakpoint()
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
             print("states: ",self.last_x_seq)
             print("actions: ",self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
+            print("reward: ", -np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
@@ -157,7 +183,8 @@ class TaskGraph:
     """ def solveGraph(self):
         result = Solve(self.prog)
         print("Success? ", result.is_success())
-
+        breakpoint()
+        self.reward_model.flow_cost(result.GetSolution(self.var_flow))
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
         # Compute coalition values,

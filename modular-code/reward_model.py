@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import norm
+from pydrake.autodiffutils import AutoDiffXd
 import networkx as nx
 import autograd
 import math
@@ -7,16 +8,17 @@ import math
 
 class RewardModel:
 
-    def __init__(self, num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
+    def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
-        self.edges = edges
-        self.num_edges = len(self.edges)
         self.task_graph = task_graph
+        self.edges = [list(edge) for edge in self.task_graph.edges]
+        #breakpoint()
+        self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
-
+        self.adjacency_mat = nx.linalg.graphmatrix.adjacency_matrix(self.task_graph).A
 
         self.coalition_params = coalition_params
         self.coalition_types = coalition_types
@@ -29,6 +31,7 @@ class RewardModel:
         Computes the cost function value over the entire task graph
         :return:
         """
+        #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
     def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False):
@@ -52,6 +55,7 @@ class RewardModel:
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
             # influencing nodes of node i
+
             if eval:
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
@@ -64,6 +68,7 @@ class RewardModel:
                                                                                                      node_coalition,
                                                                                                      var_reward_mean,
                                                                                                      var_reward_stddev)
+            #breakpoint()
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
@@ -126,21 +131,47 @@ class RewardModel:
 
         :return: function handle that takes in (x[l], u[l], l) and returns x[l+1]
         """
-        def dynamics(x, u, l):
+        def dynamics(x, u, node_i):
             """
-            :arg x is the vector of rewards at the incoming neighborhood of node l+1.
-            :arg u is the vector of flows along the incoming edges to node l+1.
-            :arg l is the index of the preceding node
+            :arg x is the vector of rewards at the incoming neighborhood of node node_i.
+            :arg u is the vector of flows along the incoming edges to node node_i.
+            :arg node_i is the index of the node
             """
             if np.isscalar(u):
                 sum_u = u
             else:
                 sum_u = sum(u)
-            node_coalition = self._compute_node_coalition(l, sum_u)
-            reward_mean, reward_std = self.compute_node_reward_dist(l, node_coalition, x, 0)
+            node_coalition = self._compute_node_coalition(node_i, sum_u)
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0)
             return reward_mean
+
+        def dynamics_b(x, u, node_i, additional_x, l_index):
+            """
+            :arg x is the reward at node l, the
+            :arg u is the vector of flows along the incoming edges to node node_i.
+            :arg node_i is the index of the node
+            """
+            x = np.atleast_1d(x)
+            additional_x = np.atleast_1d(additional_x)
+            # assemble x vector
+            if (not additional_x.size == 0) and l_index != -1:
+                #full_x = np.insert(additional_x,l_index,x)
+                full_x = np.concatenate((additional_x[0:l_index],x,additional_x[l_index:len(additional_x)]))
+            elif l_index == -1:
+                full_x = additional_x
+            else:
+                full_x = x
+            if np.isscalar(u):
+                sum_u = u
+            else:
+                sum_u = sum(u)
+            node_coalition = self._compute_node_coalition(node_i, sum_u)
+            #breakpoint()
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, full_x, 0)
+            return reward_mean
+
         #breakpoint()
-        return dynamics
+        return dynamics_b
 
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
         """
@@ -155,7 +186,7 @@ class RewardModel:
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
-
+        print("Computing node reward for NODE ",node_i, " with an incoming coalition of size ", node_coalition)
         task_influence_value = []
         list_ind = 0
         for edge in incoming_edges:
@@ -177,7 +208,7 @@ class RewardModel:
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
-
+        #breakpoint()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
@@ -189,6 +220,7 @@ class RewardModel:
         """
         if node_i != 0 or node_i != self.num_tasks:
             coalition_function = getattr(self, self.coalition_types[node_i])
+            #breakpoint()
             return coalition_function(f, param=self.coalition_params[node_i])
         else:
             # source and sink node has 0 coalition/reward
@@ -204,6 +236,8 @@ class RewardModel:
         return D_incoming @ f
 
     def sigmoid(self, flow, param):
+        if type(flow) is AutoDiffXd:
+            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
         return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):

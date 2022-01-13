@@ -13,6 +13,8 @@ class DDP:
                  state_dim, 
                  pred_time,
                  inc_mat,
+                 adj_mat,
+                 edgelist,
                  constraint_type='qp'):
         self.pred_time = pred_time
         self.umax = umax
@@ -25,6 +27,8 @@ class DDP:
         self.lf_x = grad(self.lf)
         self.lf_xx = jacobian(self.lf_x)
         self.incmat = inc_mat
+        self.adjmat = adj_mat
+        self.edgelist = edgelist
         self.constraint_type = constraint_type
 
 
@@ -32,11 +36,26 @@ class DDP:
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
+        #TODO: make an incoming_x_seq that places the list of incoming node rewards to node l at index l
+        incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
+        incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
+        incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
-        for l in range(self.pred_time - 1, -1, -1):
-            l_x = grad(self.l, 0)
-            l_u = grad(self.l, 1)
+        for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
+            incoming_rewards_arr = list(incoming_x_seq[l])
+            if l in incoming_node_list[l]:
+                l_ind = incoming_node_list[l].index(l)
+                x = incoming_rewards_arr[l_ind]
+                incoming_rewards_arr.pop(l_ind)
+                additional_x = incoming_rewards_arr
+            else:
+                l_ind = -1
+                additional_x = incoming_rewards_arr
+                x = None
+
+            l_x = grad(self.l[l], 0)
+            l_u = grad(self.l[l], 1)
             l_xx = jacobian(l_x, 0)
             l_uu = jacobian(l_u, 1)
             l_ux = jacobian(l_u, 0)
@@ -45,29 +64,42 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            f_x_t = f_x(x_seq[l], u_seq[l])
-            f_u_t = f_u(x_seq[l], u_seq[l])
-            q_x = l_x(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_u = l_u(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_x[l + 1]))
-            q_xx = l_xx(x_seq[l], u_seq[l]) + \
-              np.matmul(np.atleast_1d(np.matmul(np.atleast_1d(f_x_t.T), np.atleast_1d(self.v_xx[l + 1]))), np.atleast_1d(f_x_t)) + \
-              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(x_seq[l], u_seq[l]))))
-            tmp = np.matmul(np.atleast_1d(f_u_t.T), np.atleast_1d(self.v_xx[l + 1]))
-            q_uu = l_uu(x_seq[l], u_seq[l]) +  np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_u_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_uu(x_seq[l], u_seq[l])))
-            q_ux = l_ux(x_seq[l], u_seq[l]) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_ux(x_seq[l], u_seq[l])))
+            #breakpoint()
+            f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
+            print(l)
+            f_u_t = f_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
+            q_x = l_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
+            q_u = l_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1]))
+            #breakpoint()
+            q_xx = l_xx(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + \
+              np.matmul(np.atleast_2d(np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_xx[l + 1]))), np.atleast_2d(f_x_t)) + \
+              np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
+            tmp = np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_xx[l + 1]))
+            q_uu = l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
+            #q_uu = np.array([[1.0]])
+            if not np.all(np.linalg.eigvals(q_uu) > 0):
+                lam = -np.min(np.linalg.eigvals(q_uu))
+                if q_uu.shape[0] == 1:
+                    q_uu = -q_uu  #TODO IS THIS REGULARIZATION????
+                else:
+                    q_uu = np.eye(q_uu.shape[0])*1.0 #TODO IS THIS REGULARIZATION????
+
+                print("regularizing Quu with lambda = ", lam)
+            q_ux = l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
+              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
                 inv_q_uu = np.array([[0.0]])
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
+            print('Qu: ', q_u)
+            print('Quu: ', q_uu)
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
-
+            
             if self.constraint_type == 'qp':
-
                 nu, _ = q_uu.shape
                 curr_inc_mat = self.incmat[l+1]
                 #curr node inflow
@@ -193,21 +225,91 @@ class DDP:
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
             self.v_x[l] = q_x - np.matmul(np.matmul(np.atleast_1d(q_u), np.atleast_1d(inv_q_uu)), np.atleast_1d(q_ux))
-            self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux.T), np.atleast_1d(kk))
+            self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
+            #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
+        print('k_seq: ',k_seq)
+        print('kk_seq: ', kk_seq)
+        print('v_seq: ',self.v)
         return k_seq, kk_seq
 
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
+        alpha=0.1
+        incoming_nodes = self.get_incoming_node_list()
+
         for t in range(len(u_seq)):
-            control = k_seq[t] + np.matmul(np.atleast_1d(kk_seq[t]), (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
+
+            incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq_hat)
+            incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
+            incoming_rewards_arr = incoming_x_seq[t]
+            incoming_flow_arr = incoming_u_seq[t]
+            if t in incoming_nodes[t]:
+                l_ind = incoming_nodes[t].index(t)
+                x = incoming_rewards_arr[l_ind]
+                incoming_rewards_arr.pop(l_ind)
+                additional_x = incoming_rewards_arr
+            else:
+                l_ind = -1
+                additional_x = incoming_rewards_arr
+                x = None
+
+            control = alpha*k_seq[t] + np.matmul(np.atleast_1d(kk_seq[t]), (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             u_seq_hat[t] = np.clip(u_seq[t] + control, -self.umax, self.umax)
-            x_seq_hat[t + 1] = self.f[t](x_seq_hat[t], u_seq_hat[t])
+            x_seq_hat[t + 1] = self.f[t](x, incoming_flow_arr, additional_x,l_ind) # TODO maybe this should be f[t+1]
+            #breakpoint()
         return x_seq_hat, u_seq_hat
+
+    def x_seq_to_incoming_x_seq(self, x_seq):
+        """
+        :param x_seq: sequence of node reward values, where index i refers to the i'th nodes reward
+        :return: incoming_x_seq: a sequence of *incoming* reward values to each node, where the i'th index contains a
+                list of the incoming reward values to the i+1th node
+        """
+        incoming_x_seq = []
+        for k in range(1,len(x_seq)):
+            in_nodes = [x_seq[i] for i, x in enumerate(self.adjmat[:,k]) if x==1]
+            incoming_x_seq.append(in_nodes)
+        #breakpoint()
+        return incoming_x_seq
+
+    def u_seq_to_incoming_u_seq(self, u_seq):
+        """
+        :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
+        :return: incoming_u_seq: sequence of incoming flows, where index i corresponds to the list of incoming flows over
+                the edges that are incident to node i+1.
+        """
+        incoming_u_seq = []
+        for k in range(1,self.pred_time+1):
+            in_node_indices = [i for i, x in enumerate(self.adjmat[:,k]) if x==1]
+            u_incoming = []
+            for in_node_ind in in_node_indices:
+                u_incoming.append(float(u_seq[self.edgelist.index([in_node_ind,k])]))
+            incoming_u_seq.append(u_incoming)
+        #breakpoint()
+        return incoming_u_seq
+
+    def get_incoming_node_list(self):
+        """
+        :return: a list of lists of incoming neighbor nodes, where the i'th entry corresponds to a list of the
+        incoming neighbors of node i+1
+        """
+        incoming_list = []
+        for k in range(1,self.pred_time+1):
+            in_node_indices = [i for i, x in enumerate(self.adjmat[:,k]) if x==1]
+            incoming_list.append(in_node_indices)
+        #breakpoint()
+        return incoming_list
+
+
+
+    def compare_func(self, func):
+        for i in range(10):
+            print(func(np.array([0],dtype=float),np.array([i],dtype=float)))
 """
 env = gym.make('CartPoleContinuous-v0').env
 obs = env.reset()
