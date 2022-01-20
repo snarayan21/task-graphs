@@ -1,7 +1,7 @@
 import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
-#import pydrake.math as math
+import pydrake.math as math
 import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
@@ -84,7 +84,7 @@ class TaskGraph:
 
         self.reward_modelself.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
-    """ def initializeSolver(self):
+    def initializeSolver(self):
         '''
         This function will define variables, functions, and bounds based on the input info
         :return:
@@ -109,14 +109,9 @@ class TaskGraph:
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
 
         # now for the cost
-        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow) """
+        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def initialize_solver_ddp(self, constraint_type='qp'):
-        # define graph
-        num_nodes = 4
-        edges = [(0, 1), (1, 2), (2, 3)]
-        influence_coeffs = [None, 2, 2, 2]
-        coalition_coeffs = [None, 2, 2, 2]
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
@@ -158,7 +153,6 @@ class TaskGraph:
 
             self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
         print('Initial x_seq: ',self.last_x_seq)
-        #breakpoint()
 
     def solve_ddp(self):
         i = 0
@@ -167,6 +161,8 @@ class TaskGraph:
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
         while i < max_iter and delta > threshold:
+            print("new iteration!!!!")
+            #breakpoint()
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
             #breakpoint()
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
@@ -180,16 +176,16 @@ class TaskGraph:
 
         self.flow = self.last_u_seq
 
-    """ def solveGraph(self):
+    def solveGraph(self):
         result = Solve(self.prog)
         print("Success? ", result.is_success())
-        breakpoint()
+        #breakpoint()
         self.reward_model.flow_cost(result.GetSolution(self.var_flow))
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
         # Compute coalition values,
         self.flow = result.GetSolution(self.var_flow)
-        print('f* = ', self.flow) """
+        print('f* = ', self.flow)
 
     def simulate_task_execution(self):
         """

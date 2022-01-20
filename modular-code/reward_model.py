@@ -186,6 +186,7 @@ class RewardModel:
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
+        print("incoming edges:", incoming_edges)
         print("Computing node reward for NODE ",node_i, " with an incoming coalition of size ", node_coalition)
         task_influence_value = []
         list_ind = 0
@@ -196,6 +197,8 @@ class RewardModel:
             source_node = self.edges[edge_id][0]
             # extract the delta function applicable to this edge
             task_interdep = getattr(self, self.dependency_types[edge_id])
+            print("edge id: ", edge_id)
+            print("task influence function:", task_interdep)
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
 
