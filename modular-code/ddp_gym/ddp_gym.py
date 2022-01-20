@@ -33,6 +33,7 @@ class DDP:
 
 
     def backward(self, x_seq, u_seq):
+        # initialize value func
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
@@ -52,7 +53,7 @@ class DDP:
             else:
                 l_ind = -1
                 additional_x = incoming_rewards_arr
-                x = None
+                x = np.array([[0.0]])
 
             l_x = grad(self.l[l], 0)
             l_u = grad(self.l[l], 1)
@@ -64,12 +65,13 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
+            print(l)
             #breakpoint()
             f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
-            print(l)
             f_u_t = f_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
+            breakpoint()
             q_x = l_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
-            q_u = l_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1]))
+            q_u = l_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.squeeze(np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1])))
             #breakpoint()
             q_xx = l_xx(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + \
               np.matmul(np.atleast_2d(np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_xx[l + 1]))), np.atleast_2d(f_x_t)) + \
@@ -86,8 +88,8 @@ class DDP:
                     q_uu = np.eye(q_uu.shape[0])*1.0 #TODO IS THIS REGULARIZATION????
 
                 print("regularizing Quu with lambda = ", lam)
-            q_ux = l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
+            q_ux = np.squeeze(l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)) + np.squeeze(np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t))) + \
+              np.squeeze(np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
@@ -187,7 +189,7 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
-            #breakpoint()
+            breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
         print('k_seq: ',k_seq)
