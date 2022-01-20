@@ -5,10 +5,10 @@ num_tasks = 4
 
 numrobots = 4
 coalition_types = ["null", "sigmoid", "sigmoid", "sigmoid"]
-coalition_params = [[0.0, 0.0, 0.0], [0.0, 1.0, 1.5], [0.0, 1.0, 1.5], [1.0, 1.0, 1.5]]
+coalition_params = [[0.0, 0.0, 0.0], [1.0, 1.0, 1.5], [1.0, 1.0, 1.5], [1.0, 1.0, 1.5]]
 
-dependency_types = ["null", "sigmoid", "sigmoid"]
-dependency_params = [[0, 0, 0], [0.0, 1.0, 1.5], [1.0, 0.0, 1.5]]
+dependency_types = ["sigmoid", "sigmoid", "sigmoid"]
+dependency_params = [[1.0, 1.0, 1.5], [1.0, 1.0, 1.5], [2.0, 1.0, 1.5]]
 
 aggs = ["and", "and", "and", "or"] #aggregation functions for the influence function agg
 
