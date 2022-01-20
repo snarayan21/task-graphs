@@ -118,8 +118,8 @@ class TaskGraph:
                                        # entry i corresponds to the equation for the reward at node i+1
         cost_func_handle_list = []
         for k in range(1, self.num_tasks):
-            dynamics_func_handle_list.append(lambda x, u, additional_x, l_index: dynamics_func_handle(x,u,k,additional_x,l_index))
-            cost_func_handle_list.append(lambda x, u, additional_x, l_index: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
+            dynamics_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: dynamics_func_handle(x,u,k,additional_x,l_index))
+            cost_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
 
         self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
                   cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
