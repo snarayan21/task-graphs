@@ -69,7 +69,7 @@ class DDP:
             #breakpoint()
             f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
             f_u_t = f_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
-            breakpoint()
+            #breakpoint()
             q_x = l_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_x[l + 1]))
             q_u = l_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.squeeze(np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_x[l + 1])))
             #breakpoint()
@@ -94,7 +94,7 @@ class DDP:
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
-                inv_q_uu = np.array([[0.0]])
+                inv_q_uu = np.zeros_like(q_uu)
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
             print('Qu: ', q_u)
             print('Quu: ', q_uu)
@@ -178,10 +178,9 @@ class DDP:
                 print("knew is: ", knew)
                 k = knew
             elif self.constraint_type == 'None':
-                k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
+                k = -np.matmul(np.atleast_2d(inv_q_uu), np.atleast_1d(q_u))
             else:
                 raise(NotImplementedError)
-
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
@@ -189,7 +188,7 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
-            breakpoint()
+            #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
         print('k_seq: ',k_seq)
@@ -200,15 +199,15 @@ class DDP:
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
-        alpha=0.1
+        incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
+        incoming_u_seq_hat = np.array(incoming_u_seq)
+        alpha=1.0
         incoming_nodes = self.get_incoming_node_list()
 
-        for t in range(len(u_seq)):
+        for t in range(self.pred_time):
 
             incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq_hat)
-            incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
             incoming_rewards_arr = incoming_x_seq[t]
-            incoming_flow_arr = incoming_u_seq[t]
             if t in incoming_nodes[t]:
                 l_ind = incoming_nodes[t].index(t)
                 x = incoming_rewards_arr[l_ind]
@@ -218,10 +217,11 @@ class DDP:
                 l_ind = -1
                 additional_x = incoming_rewards_arr
                 x = None
-
-            control = alpha*k_seq[t] + np.matmul(np.atleast_1d(kk_seq[t]), (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
-            u_seq_hat[t] = np.clip(u_seq[t] + control, -self.umax, self.umax)
-            x_seq_hat[t + 1] = self.f[t](x, incoming_flow_arr, additional_x,l_ind) # TODO maybe this should be f[t+1]
+            #breakpoint()
+            control = alpha*k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t]))
+            incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
+            x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
+            u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
             #breakpoint()
         return x_seq_hat, u_seq_hat
 
@@ -266,6 +266,21 @@ class DDP:
         #breakpoint()
         return incoming_list
 
+    def incoming_u_seq_to_u_seq(self, incoming_u_seq):
+        u_seq = np.zeros(len(self.edgelist),)
+        incoming_node_list = self.get_incoming_node_list()
+        for k in range(self.pred_time):
+            #breakpoint()
+            node_inds = incoming_node_list[k]
+            if len(node_inds)>1:
+                for j in range(len(node_inds)):
+                    ind = self.edgelist.index([node_inds[j],k+1])
+                    u_seq[ind] = incoming_u_seq[k][j]
+            else:
+                ind = self.edgelist.index([node_inds[0],k+1])
+                u_seq[ind] = incoming_u_seq[k][0]
+
+        return u_seq
 
 
     def compare_func(self, func):
