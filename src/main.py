@@ -5,7 +5,7 @@ from log_data import LogData
 import toml
 import argparse
 
-
+# LP main program
 def main():
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
