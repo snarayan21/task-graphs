@@ -1,0 +1,16 @@
+[exp]
+
+edges = [[0,1], [1,2], [2,3]]
+num_tasks = 4
+
+numrobots = 4
+coalition_types = ["null", "polynomial", "polynomial", "polynomial"] # polynomial function is param[0] + param[1]*x + param[2]*x^2 ....
+coalition_params = [[0, 0, 0], [0.0, 10.0, -3.0], [0.0, 1.0, -1.0], [0.0, 10.0, -6.0]]
+
+dependency_types = ["null", "polynomial", "polynomial", "polynomial"]
+dependency_params = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],[0.0, 1.0, 0.0]]
+
+aggs = ["or", "or", "or", "or"] #aggregation functions for the influence function agg
+
+[ddp]
+constraint_type='None' #'qp' or 'None'

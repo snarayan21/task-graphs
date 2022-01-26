@@ -10,9 +10,9 @@ class RewardModelEstimate(RewardModel):
     the graph and reward parameters. This subclass adds functionality to update the reward model based on data.
     """
 
-    def __init__(self, num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
+    def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
-        super().__init__(num_tasks, num_robots, edges, task_graph, coalition_params, coalition_types, dependency_params,
+        super().__init__(num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
                          dependency_types, influence_agg_func_types)
 
     def update_coalition_params(self, data, mode='oracle'):
