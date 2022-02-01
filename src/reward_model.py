@@ -7,6 +7,11 @@ import math
 
 
 class RewardModel:
+    """
+    A class that stores and computes the reward over a task graph given a robot flow. The model is initialized with
+    reward and graph parameters, and retains these parameters throughout computation. It is the "real-world" model of
+    rewards.
+    """
 
     def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
                  dependency_types, influence_agg_func_types):
@@ -98,18 +103,6 @@ class RewardModel:
         std = std_dev_func(reward_func_val)
         return mean, std
 
-    def get_influence_agg_func(self, influence_agg_func_type):
-        if influence_agg_func_type == 'm':
-            def mult_agg(influence_func_output_list):
-                influence_aggregated = 1
-                for i in range(len(influence_func_output_list)):
-                    influence_aggregated = influence_aggregated * influence_func_output_list[i]
-                return influence_aggregated
-
-            return mult_agg
-        else:
-            raise NotImplementedError('Influence aggregation type ' + influence_agg_func_type + ' is not supported.')
-
     def _cvar_cost(self, mean, std):
         """
 
@@ -186,8 +179,12 @@ class RewardModel:
         """
         # compute incoming edges to node_i
         incoming_edges = list(self.task_graph.in_edges(node_i))
+<<<<<<< HEAD:modular-code/reward_model.py
         print("incoming edges:", incoming_edges)
         print("Computing node reward for NODE ",node_i, " with an incoming coalition of size ", node_coalition)
+=======
+        #print("Computing node reward for NODE ",node_i, " with an incoming coalition of size ", node_coalition)
+>>>>>>> origin/main:src/reward_model.py
         task_influence_value = []
         list_ind = 0
         for edge in incoming_edges:

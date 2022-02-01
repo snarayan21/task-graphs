@@ -1,4 +1,7 @@
 [exp]
+max_steps=100
+scenario="farm_no_adaptive"
+adaptive=0
 
 num_tasks = 11 # includes dummy source and sink tasks
 edges = [[0,1], [0,3], [1,2], [3,4],[2,5],[4,5],[0,7],[5,6],[6,8],[6,9],[7,9],[8,10],[9,10]]
@@ -6,8 +9,17 @@ edges = [[0,1], [0,3], [1,2], [3,4],[2,5],[4,5],[0,7],[5,6],[6,8],[6,9],[7,9],[8
 numrobots = 5
 coalition_types = ["null", "sigmoid", "sigmoid", "dim_return", "sigmoid",
                     "sigmoid", "sigmoid", "sigmoid", "dim_return", "dim_return", "null"]
-coalition_params = [[0, 0, 0], [1.0, 10.0, 0.2], [1.0, 10.0, 0.2], [1.0, 5.0, 1.0], [1.0, 10.0, 0.2],
-                    [1.0, 10.0, 0.2],[1.0, 10.0, 0.2],[1.0, 10.0, 0.2],[1.0, 5.0, 1.0],[1.0, 5.0, 1.0], [0, 0, 0]]
+coalition_params = [[0, 0, 0],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 1.0],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 0.2],
+                    [1.0, 5.0, 1.0],
+                    [1.0, 5.0, 1.0],
+                    [0, 0, 0]]
 
 dependency_types = ["null", "null", "sigmoid", "dim_return", "null", "null",
     "null","dim_return", "sigmoid", "null", "sigmoid",

@@ -1,10 +1,11 @@
 import sys
 import matplotlib.pyplot as plt
 from taskgraph import TaskGraph
+from log_data import LogData
 import toml
 import argparse
 
-
+# LP main program
 def main():
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
@@ -36,8 +37,14 @@ def main():
 
         # update the visualization
         task_planning.render()
+
+        # induce a disturbance or change in task characteristics
         task_planning.update_reward_curves()
 
+        #store data
+        #data_logger.store_in_loop(time, task_planning.flow, task_planning.reward)
+
+    #data_logger.write_to_file()
     plt.ioff()
     plt.show()
 
