@@ -24,8 +24,8 @@ def main():
         milp_solver.initializeSolver()
         milp_solver.solveGraph()
 
-    breakpoint()
-    for time in range(10):
+    #breakpoint()
+    """ for time in range(10):
         # induce a disturbance or change in task characteristics
         # task_planning.update_reward_curves()  # TODO: introduce adaptive piece here
 
@@ -42,11 +42,12 @@ def main():
         task_planning.update_reward_curves()
 
         #store data
-        #data_logger.store_in_loop(time, task_planning.flow, task_planning.reward)
+        #data_logger.store_in_loop(time, task_planning.flow, task_planning.reward) """
 
     #data_logger.write_to_file()
-    plt.ioff()
-    plt.show()
+    #task_planning.render()
+    #plt.ioff()
+    #plt.show()
 
 
 if __name__ == '__main__':

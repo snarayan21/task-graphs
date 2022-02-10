@@ -5,6 +5,14 @@ import autograd.numpy as np
 from cvxopt import matrix as cvxopt_matrix
 from cvxopt import solvers as cvxopt_solvers
 
+
+
+"""
+saaketh's important git commands
+git merge origin/main
+git push origin HEAD:ddp-integration-qp
+"""
+
 class DDP:
     def __init__(self, next_state, #vector of dynamics equations function handles -- one for each node
                  running_cost,  #vector of running cost function handles -- one for each node
@@ -40,6 +48,7 @@ class DDP:
         #TODO: make an incoming_x_seq that places the list of incoming node rewards to node l at index l
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
+        #breakpoint()
         incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
@@ -65,7 +74,7 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            print(l)
+            #print(l)
             #breakpoint()
             f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
             f_u_t = f_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
@@ -80,6 +89,11 @@ class DDP:
             q_uu = l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
             #q_uu = np.array([[1.0]])
+
+            #for some reason q_uu has 4 dimensions sometimes.
+            if(np.size(q_uu) == 1):
+                q_uu = np.atleast_2d(np.squeeze(q_uu))
+
             if not np.all(np.linalg.eigvals(q_uu) > 0):
                 lam = -np.min(np.linalg.eigvals(q_uu))
                 if q_uu.shape[0] == 1:
@@ -91,47 +105,104 @@ class DDP:
             q_ux = np.squeeze(l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)) + np.squeeze(np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t))) + \
               np.squeeze(np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
 
+            
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
+                print("got to here wtf")
                 inv_q_uu = np.zeros_like(q_uu)
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
-            print('Qu: ', q_u)
-            print('Quu: ', q_uu)
+
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
+
+            print('q_x: ', q_x)
+            print('q_u: ', q_u)
+            print('q_ux: ', q_ux)
+            print('q_uu: ', q_uu)
+            print('incoming u seq: ', incoming_u_seq[l])
+            
             
             if self.constraint_type == 'qp':
-                nu, _ = q_uu.shape
-                print(q_x)
+
+                opts = {'reltol' : 1e-10, 'abstol' : 1e-10, 'feastol' : 1e-10}
+
+                nu = q_u.size
+                print(nu)
                 curr_inc_mat = self.incmat[l+1]
-                print(curr_inc_mat)
+                curr_u = []
                 #curr node inflow
                 u = 0.0
                 for i in range(len(curr_inc_mat)):
                     if(curr_inc_mat[i] == 1):
                         u += u_seq[i]
+                        curr_u.append(u_seq[i])
                 #curr node outflow
                 p = 0.0
                 for i in range(len(curr_inc_mat)):
                     if(curr_inc_mat[i] == -1):
                         p += u_seq[i]
+                
+                #curr shared inflow (from  other edges)
+                """ s = 0.0
+                for i in range(len(curr_inc_mat)):
+                    if(curr_inc_mat[i] == -1):
+                        s += u_seq[i] """
 
                 solns = np.zeros(nu)
-
+                
                 if(l == self.pred_time - 1):
                     #constraint on p doesn't take place if we are at last node. Only z slack variable
                     P = np.copy(q_uu)
-                    P = np.hstack((P, np.zeros((P.shape[0], 1))))
-                    P = np.vstack((P, np.zeros((1, P.shape[1]))))
-                    P = cvxopt_matrix(P, tc='d')
-                    q = np.copy(q_x)
-                    q = np.vstack((q, np.zeros((1,1))))
-                    A = np.ones((1, nu+1))
-                    b = np.array([1 - u])
-                    G = np.zeros((1, nu+1))
-                    G[0][-1] = -1
-                    h = np.zeros((1, 1))
+                    #P = np.hstack((P, np.zeros((P.shape[0], 2))))
+                    #P = np.vstack((P, np.zeros((2, P.shape[1]))))
+                    #P = cvxopt_matrix(P, tc='d')
+                    #q = np.copy(q_x)
+                    q = np.copy(q_u)
+                    #q = np.vstack((q, np.zeros((2,1))))
+                    #A = np.ones((1, nu+1))
+                    A = np.full((2, nu+2), 1)
+                    #u + Adu <= 1
+                    #Adu <= 1-u
+                    #Adu + z = 1-u
+                    #z >= 0
+                    A[0][-2] = 1
+                    A[0][-1] = 0
+                    #u + Adu >= 0
+                    #Adu >= -u
+                    #Adu + x = -u
+                    #x <= 0
+                    A[1][-2] = 0
+                    A[1][-1] = 1
+                    #b = np.array([1 - u])
+                    b = np.array([1-u, -u])
+                    #G = np.zeros((1, nu+1))
+                    G = np.zeros(((2*nu) + 2, nu))
+                    #G[0][-2] = -1
+                    #G[1][-1] = 1
+                    G[0] = np.ones(nu)
+                    G[1] = -1*np.ones(nu)
+                    #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                    #and
+                    #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                    for c in range(nu):
+                        #for constr (1)
+                        G[c+2][c] = -1
+                        #for constr (2)
+                        G[c+nu+2][c] = 1
+                    h = np.zeros(((2*nu) + 2, 1))
+                    #u+ Adu <= 1 --> Adu <= 1-u
+                    h[0] = 1-u
+                    #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                    h[1] = u
+                    for i in range(nu):
+                        #use curr_u vector from above
+                        #TODO: confirm that indices are consistent
+                        h[i+2] = curr_u[i]
+                    for i in range(nu, 2*nu):
+                        #use curr_u vector from above
+                        #TODO: confirm that indices are consistent
+                        h[i+2] = 1 - curr_u[i-nu]
 
                     P = cvxopt_matrix(P, tc='d')
                     q = cvxopt_matrix(q, tc='d')
@@ -139,27 +210,96 @@ class DDP:
                     b = cvxopt_matrix(b, tc='d')
                     G = cvxopt_matrix(G, tc='d')
                     h= cvxopt_matrix(h, tc='d')
-
-                    soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                    
+                    #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                    print("we are in the edge case!")
+                    print("P", P)
+                    print("q", q)
+                    print("G", G)
+                    print("h", h)
+                    print("u", u)
+                    print("p", p)
+                    #breakpoint()
+                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
                     print("SOLUTION: ", sols)
-                    solns = sols[:-1]
+                    #breakpoint()
+                    solns = sols
 
                 else:
                     P = np.copy(q_uu)
-                    P = np.hstack((P, np.zeros((P.shape[0], 2))))
-                    P = np.vstack((P, np.zeros((2, P.shape[1]))))
-                    q = np.copy(q_x)
-                    q = np.vstack((q, np.zeros((2,1))))
-                    A = np.full((1, nu+2), 2)
-                    A[0][-1] = 1
-                    A[0][-2] = 1
-                    b = np.array([1 + p - (2*u)])
-                    G = np.zeros((2, nu+2))
-                    G[0][-1] = 1
-                    G[1][-1] = -1
-                    h = np.zeros((2, 1))
+                    #P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                    #P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                    #q = np.copy(q_x)
+                    q = np.copy(q_u)
+                    #q = np.vstack((q, np.zeros((3,1)))) 
+                    A = np.full((3, nu+3), 1)
+                    #u + Adu >= p
+                    #Adu >= p-u
+                    #Adu + y = p-u
+                    #y <= 0
+                    A[0][-3] = 1
+                    A[0][-2] = 0
+                    A[0][-1] = 0
+                    #u + Adu <= 1
+                    #Adu <= 1-u
+                    #Adu + z = 1-u
+                    #z >= 0
+                    A[1][-3] = 0
+                    A[1][-2] = 1
+                    A[1][-1] = 0
+                    #u + Adu >= 0
+                    #Adu >= -u
+                    #Adu + x = -u
+                    #x <= 0
+                    A[2][-3] = 0
+                    A[2][-2] = 0
+                    A[2][-1] = 1
+                    print(A)
+                    b = np.array([p-u, 1-u, -u])
+                    #need to add constraints on inflow components and on slack variables
+                    #G = np.zeros(((2*nu) + 3, nu+3))
+                    G = np.zeros(((2*nu) + 4, nu))
+                    #y <= 0
+                    #G[0][-3] = 1
+                    #z >= 0 --> -z <= 0
+                    #G[1][-2] = -1
+                    #x <= 0
+                    #G[2][-1] = 1
+                    G[0] = np.ones(nu)
+                    G[1] = -1*np.ones(nu)
+                    G[2] = -1*np.ones(nu)
+                    G[3] = np.ones(nu)
+                    #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                    #and
+                    #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                    for c in range(nu):
+                        #for constr (1)
+                        G[c+4][c] = -1
+                        #for constr (2)
+                        G[c+nu+4][c] = 1
+                    h = np.zeros(((2*nu) + 4, 1))
+                    #u+ Adu <= 1 --> Adu <= 1-u
+                    h[0] = 1-u
+                    #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                    h[1] = u
+                    #u + Adu >= p --> Adu >= p - u --> -Adu <= u - p
+                    h[2] = u-p
+                    h[3] = p-u
+                    #breakpoint()
+                    if(p > 1.0):
+                        h[2] = u-1.0
+                        h[3] = 1.0-u
+                    for i in range(nu):
+                        #use curr_u vector from above
+                        #TODO: confirm that indices are consistent
+                        h[i+4] = curr_u[i]
+                    for i in range(nu, 2*nu):
+                        #use curr_u vector from above
+                        #TODO: confirm that indices are consistent
+                        h[i+4] = 1 - curr_u[i-nu]
 
+                    print(P)
                     P = cvxopt_matrix(P, tc='d')
                     q = cvxopt_matrix(q, tc='d')
                     A = cvxopt_matrix(A, tc='d')
@@ -167,10 +307,21 @@ class DDP:
                     G = cvxopt_matrix(G, tc='d')
                     h= cvxopt_matrix(h, tc='d')
 
-                    soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                    #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                    print("normal case")
+                    print("P", P)
+                    print("q", q)
+                    print("G", G)
+                    print("h", h)
+                    print("u", u)
+                    print("p", p)
+                    print("u-p", u-p)
+                    #breakpoint()
+                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
                     print("SOLUTION: ", sols)
-                    solns = sols[-2]
+                    #breakpoint()
+                    solns = sols
 
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
                 knew = np.atleast_1d(solns)
@@ -178,9 +329,10 @@ class DDP:
                 print("knew is: ", knew)
                 k = knew
             elif self.constraint_type == 'None':
-                k = -np.matmul(np.atleast_2d(inv_q_uu), np.atleast_1d(q_u))
+                k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
             else:
                 raise(NotImplementedError)
+                
             kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
@@ -201,7 +353,7 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=1.0
+        alpha=0.1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):

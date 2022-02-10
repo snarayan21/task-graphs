@@ -146,7 +146,7 @@ class TaskGraph:
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
                   constraint_type=constraint_type)
-        self.last_u_seq = np.ones((self.num_edges,))#list(range(self.num_edges))
+        self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
 
         incoming_nodes = self.ddp.get_incoming_node_list()
@@ -171,7 +171,7 @@ class TaskGraph:
 
     def solve_ddp(self):
         i = 0
-        max_iter = 30
+        max_iter = 200
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
@@ -181,12 +181,13 @@ class TaskGraph:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
             #breakpoint()
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
+            np.set_printoptions(suppress=True)
             print("states: ",self.last_x_seq)
-            print("actions: ",self.last_u_seq)
+            print("actions: ", self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
-            print("reward: ", -np.sum(self.last_x_seq))
+            print("reward: ", np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
