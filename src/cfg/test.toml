@@ -13,8 +13,5 @@ dependency_params = [[0, 0, 0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0], [1.0, 3.0, 1.0
 aggs = ["and", "and", "and", "and", "and"] #aggregation functions for the influence function agg
 
 [ddp]
-<<<<<<< HEAD:modular-code/toml-files/test.toml
 constraint_type='None' #'qp' or 'None'
-=======
-constraint_type='None' #'qp' or 'None'
->>>>>>> origin/main:src/cfg/test.toml
+
