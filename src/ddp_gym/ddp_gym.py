@@ -43,6 +43,7 @@ class DDP:
         incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
+        update_v_flag = True
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
             incoming_rewards_arr = list(incoming_x_seq[l])
             if l in incoming_node_list[l]:
@@ -65,7 +66,7 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
-            print(l)
+            print("NODE l = ",l)
             #breakpoint()
             f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
             f_u_t = f_u(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
@@ -80,22 +81,34 @@ class DDP:
             q_uu = l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
               np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
             #q_uu = np.array([[1.0]])
+            #q_uu = np.eye(q_uu.shape[0])*1.0
             if not np.all(np.linalg.eigvals(q_uu) > 0):
+                print("Quu NOT positive definite: ", q_uu)
+                q_uu = np.eye(q_uu.shape[0])*1.0
+                """
                 lam = -np.min(np.linalg.eigvals(q_uu))
                 if q_uu.shape[0] == 1:
                     q_uu = -q_uu  #TODO IS THIS REGULARIZATION????
                 else:
                     q_uu = np.eye(q_uu.shape[0])*1.0 #TODO IS THIS REGULARIZATION????
-
                 print("regularizing Quu with lambda = ", lam)
+                """
+
             q_ux = np.squeeze(l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)) + np.squeeze(np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t))) + \
               np.squeeze(np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
 
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
-                inv_q_uu = np.zeros_like(q_uu)
-                print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
+                # try simple Tikhonov regularization
+                reg_q_uu = q_uu + np.eye(q_uu.shape[0])*0.01*np.linalg.norm(incoming_u_seq[l])
+                try:
+                    print("performing Tikhonov regularization on inverse of q_uu by adding ", 0.01*np.linalg.norm(incoming_u_seq[l]), " to diagonal")
+                    inv_q_uu = np.linalg.inv(np.atleast_2d(reg_q_uu))
+                except np.linalg.LinAlgError:
+                    inv_q_uu = np.zeros_like(q_uu)
+                    #inv_q_uu = np.eye(q_uu.shape[0])
+                    print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
             print('Qu: ', q_u)
             print('Quu: ', q_uu)
             q_uu = np.atleast_2d(q_uu)
@@ -201,7 +214,7 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=1.0
+        alpha=0.1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):
