@@ -1,6 +1,7 @@
 import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
+import cvxpy as cp
 #import pydrake.math as math
 import matplotlib.pyplot as plt
 import matplotlib
@@ -9,6 +10,8 @@ from reward_model import RewardModel
 from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
+from scipy.optimize import minimize, LinearConstraint
+
 
 import os
 
@@ -75,7 +78,7 @@ class TaskGraph:
         """
         #get current coalition params from reward model estimate
         self.coalition_params = self.reward_model_estimate.get_coalition_params()
-
+        print("UPDATING COALITION PARAMETERS")
         if "test" in self.scenario:
             # let's degrade task 2 first
             if self.coalition_params[2][0] > 0.9:
@@ -114,6 +117,10 @@ class TaskGraph:
                                 lb=np.zeros(self.num_edges),
                                 ub=np.ones(self.num_edges),
                                 vars=self.var_flow)
+        # self.prog.AddLinearConstraint(np.eye(self.num_edges),
+        #                               lb = np.zeros(self.num_edges),
+        #                               ub = np.ones(self.num_edges),
+        #                               vars = self.var_flow)
 
         # Constraint2: The inflow must be equal to outflow at all edges
         # compute incidence matrix
@@ -122,9 +129,38 @@ class TaskGraph:
         b[0] = -1.0#self.num_robots # flow constrained to sum upto 1
         b[-1] = 1.0#self.num_robots
         self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
+        #breakpoint()
+        #alternate inequality constraint
+        lb = np.zeros(self.num_tasks)
+        lb[0] = -1.0
+        ub = np.ones(self.num_tasks)*np.inf
+        ub[-1] = 1.0
+        #self.prog.AddLinearConstraint(self.incidence_mat, -np.inf*np.ones(self.num_tasks), np.inf*np.ones(self.num_tasks), self.var_flow)
 
         # now for the cost
-        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
+        self.prog.AddCost(self.reward_model.flow_cost, vars=self.var_flow) # TODO: in the future, this will be reward_mode_estimate rather than reward_model
+
+        #
+        # # CVXPY VERSION -- I think this doesn't work because can't take this cost function as input
+        # self.var_flow_b = cp.Variable((self.num_edges))
+        # constraints = []
+        # constraints.append(0 <= self.var_flow_b)
+        # constraints.append(self.var_flow_b <= 1)
+        # constraints.append(lb <= self.incidence_mat @ self.var_flow_b)
+        # constraints.append(self.incidence_mat @ self.var_flow_b <= ub)
+        # self.prog_b = cp.Problem(cp.Minimize(self.reward_model.flow_cost),constraints)
+        # self.prog_b.solve()
+
+        # scipy version
+        # constraint 1
+        c1 = LinearConstraint(np.eye(self.num_edges),
+                               lb = np.zeros(self.num_edges),
+                               ub = np.ones(self.num_edges))
+        c2 = LinearConstraint(self.incidence_mat[0:-1,:], lb=b[0:-1], ub=b[0:-1])
+
+        scipy_result = minimize(self.reward_model.flow_cost,np.zeros(self.num_edges),constraints=(c1,c2))
+        print(scipy_result)
+        breakpoint()
 
     def initialize_solver_ddp(self, constraint_type='qp'):
         # define graph
@@ -151,7 +187,8 @@ class TaskGraph:
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
                   constraint_type=constraint_type)
-        self.last_u_seq = np.ones((self.num_edges,))#list(range(self.num_edges))
+        #self.last_u_seq =list(range(self.num_edges)) #np.zeros((self.num_edges,))#list(range(self.num_edges))
+        self.last_u_seq = np.ones((self.num_edges,))
         self.last_x_seq = np.zeros((self.num_tasks,))
 
         incoming_nodes = self.ddp.get_incoming_node_list()
@@ -173,14 +210,17 @@ class TaskGraph:
 
             self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
         print('Initial x_seq: ',self.last_x_seq)
+        print('Initial reward: ', -np.sum(self.last_x_seq))
+        print('Initial u_seq: ', self.last_u_seq)
         #breakpoint()
 
     def solve_ddp(self):
         i = 0
-        max_iter = 30
+        max_iter = 50
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
+        reward_history = [-np.sum(self.last_x_seq)]
         while i < max_iter and delta > threshold:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
             #breakpoint()
@@ -191,9 +231,15 @@ class TaskGraph:
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", -np.sum(self.last_x_seq))
+            reward_history.append(-np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
+
+        plt.plot(reward_history)
+        plt.xlabel("Iteration #")
+        plt.ylabel("Reward")
+        plt.show()
 
     def solveGraph(self):
         """
@@ -202,13 +248,21 @@ class TaskGraph:
         """
         result = Solve(self.prog)
         print("Success? ", result.is_success())
+
+
+        print("Solver ID: ",result.get_solver_id())
+        print("Infeasible Constraints: ",result.GetInfeasibleConstraintNames(self.prog))
         breakpoint()
-        self.reward_model.flow_cost(result.GetSolution(self.var_flow))
+        if not result.is_success():
+            details = result.get_solver_details()
+            print("Solver details:", details)
+        print(self.reward_model.flow_cost(result.GetSolution(self.var_flow)))
         print('optimal cost = ', result.get_optimal_cost())
         print('solver is: ', result.get_solver_id().name())
         # Compute coalition values,
         self.flow = result.GetSolution(self.var_flow)
         print('f* = ', self.flow)
+        print('Constraint: ', np.matmul(self.incidence_mat,self.flow))
 
     def simulate_task_execution(self):
         """
