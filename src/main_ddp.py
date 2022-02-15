@@ -5,24 +5,26 @@ from log_data import LogData
 import toml
 import argparse
 
-# LP main program
+# NP main program
 def main():
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
-    parser.add_argument('-milp', action='store_true', default=False, help='include -milp flag to additionally solve graph with MILP')
+    parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline flag to additionally solve graph with baseline optimizer')
     args = parser.parse_args()
 
     track_args = toml.load(args.cfg)
+
+    if args.baseline:
+        np_solver = TaskGraph(**track_args['exp'])
+        #np_solver.initializeSolver()
+        #np_solver.solveGraph()
+        np_solver.solve_graph_scipy()
 
     task_planning = TaskGraph(**track_args['exp'])
 
     task_planning.initialize_solver_ddp(**track_args['ddp'])
     task_planning.solve_ddp()
 
-    if args.milp:
-        milp_solver = TaskGraph(**track_args['exp'])
-        milp_solver.initializeSolver()
-        milp_solver.solveGraph()
 
     #breakpoint()
     """ for time in range(10):
