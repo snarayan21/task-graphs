@@ -34,7 +34,7 @@ class LogData:
 
         data = vars(self) # stores the entire object into a dict
         pickle_file = str(self.data_dir)+'/'+self.scenario_name+".pkl"
-        with open(pickle_file, "wb") as f:
+        with open(pickle_file, "wb+") as f:
             pkl.dump(data, f)
 
 
