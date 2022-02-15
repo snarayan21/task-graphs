@@ -2,6 +2,8 @@ import numpy as np
 from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
+from scipy.optimize import minimize, LinearConstraint
+
 import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
@@ -125,6 +127,23 @@ class TaskGraph:
 
         # now for the cost
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
+
+
+
+    def solve_graph_scipy(self):
+        self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
+        b = np.zeros(self.num_tasks)
+
+        # scipy version
+        # constraint 1
+        c1 = LinearConstraint(np.eye(self.num_edges),
+                               lb = np.zeros(self.num_edges),
+                               ub = np.ones(self.num_edges))
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
+
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
+        print(scipy_result)
+        breakpoint()
 
     def initialize_solver_ddp(self, constraint_type='qp'):
 
