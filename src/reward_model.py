@@ -189,7 +189,7 @@ class RewardModel:
             source_node = self.edges[edge_id][0]
             # extract the delta function applicable to this edge
             task_interdep = getattr(self, self.dependency_types[edge_id])
-            print("edge id: ", edge_id)
+            #print("edge id: ", edge_id)
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
 
@@ -202,8 +202,8 @@ class RewardModel:
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
-        print("node coalition (flow): ", node_coalition)
-        print("task_influence_value: ", task_influence_value)
+        #print("node coalition (flow): ", node_coalition)
+        #print("task_influence_value: ", task_influence_value)
         #breakpoint()
         return mean, std
 
