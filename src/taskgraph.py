@@ -224,7 +224,6 @@ class TaskGraph:
             plt.xlabel("Iteration #")
             plt.ylabel("Reward")
             plt.show()
-        breakpoint()
 
     def solveGraph(self):
         result = Solve(self.prog)

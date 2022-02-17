@@ -22,6 +22,19 @@ def main():
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
 
+    print('DDP solution: ')
+    print(task_graph.last_ddp_solution)
+    ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
+    print('DDP solution reward: ', ddp_reward)
+
+    if args.baseline:
+        print('Baseline solution: ')
+        print(task_graph.last_baseline_solution.x)
+        bl_reward = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
+        print('Baseline solution reward: ', bl_reward)
+
+        print("Optimality ratio: ", ddp_reward/bl_reward)
+
 
     #breakpoint()
     """ for time in range(10):
