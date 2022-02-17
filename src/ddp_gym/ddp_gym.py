@@ -45,7 +45,6 @@ class DDP:
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
-        #TODO: make an incoming_x_seq that places the list of incoming node rewards to node l at index l
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
         #breakpoint()
@@ -53,7 +52,7 @@ class DDP:
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
-            incoming_rewards_arr = list(incoming_x_seq[l])
+            incoming_rewards_arr = list(incoming_x_seq[l]) #incoming rewards to node l + 1
             if l in incoming_node_list[l]:
                 l_ind = incoming_node_list[l].index(l)
                 x = incoming_rewards_arr[l_ind]
@@ -74,6 +73,7 @@ class DDP:
             f_xx = jacobian(f_x, 0)
             f_uu = jacobian(f_u, 1)
             f_ux = jacobian(f_u, 0)
+
             #print(l)
             #breakpoint()
             f_x_t = f_x(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)
@@ -109,26 +109,25 @@ class DDP:
             try:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
-                print("got to here wtf")
+                #print("got to here wtf")
                 inv_q_uu = np.zeros_like(q_uu)
                 print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
 
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
 
-            print('q_x: ', q_x)
-            print('q_u: ', q_u)
-            print('q_ux: ', q_ux)
-            print('q_uu: ', q_uu)
-            print('incoming u seq: ', incoming_u_seq[l])
+            #print('q_x: ', q_x)
+            #print('q_u: ', q_u)
+            #print('q_ux: ', q_ux)
+            #print('q_uu: ', q_uu)
+            #print('incoming u seq: ', incoming_u_seq[l])
             
             
             if self.constraint_type == 'qp':
-
                 opts = {'reltol' : 1e-10, 'abstol' : 1e-10, 'feastol' : 1e-10}
 
                 nu = q_u.size
-                print(nu)
+                #print(nu)
                 curr_inc_mat = self.incmat[l+1]
                 curr_u = []
                 #curr node inflow
@@ -212,17 +211,18 @@ class DDP:
                     h= cvxopt_matrix(h, tc='d')
                     
                     #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    print("we are in the edge case!")
-                    print("P", P)
-                    print("q", q)
-                    print("G", G)
-                    print("h", h)
-                    print("u", u)
-                    print("p", p)
+                    #print("we are in the edge case!")
+                    #print("P", P)
+                    #print("q", q)
+                    #print("G", G)
+                    #print("h", h)
+                    #print("u", u)
+                    #print("p", p)
                     #breakpoint()
-                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
+                    #breakpoint()
+                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts, verbose=False)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
-                    print("SOLUTION: ", sols)
+                    #print("SOLUTION: ", sols)
                     #breakpoint()
                     solns = sols
 
@@ -255,7 +255,7 @@ class DDP:
                     A[2][-3] = 0
                     A[2][-2] = 0
                     A[2][-1] = 1
-                    print(A)
+                    #print(A)
                     b = np.array([p-u, 1-u, -u])
                     #need to add constraints on inflow components and on slack variables
                     #G = np.zeros(((2*nu) + 3, nu+3))
@@ -299,7 +299,7 @@ class DDP:
                         #TODO: confirm that indices are consistent
                         h[i+4] = 1 - curr_u[i-nu]
 
-                    print(P)
+                    #print(P)
                     P = cvxopt_matrix(P, tc='d')
                     q = cvxopt_matrix(q, tc='d')
                     A = cvxopt_matrix(A, tc='d')
@@ -308,25 +308,25 @@ class DDP:
                     h= cvxopt_matrix(h, tc='d')
 
                     #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    print("normal case")
-                    print("P", P)
-                    print("q", q)
-                    print("G", G)
-                    print("h", h)
-                    print("u", u)
-                    print("p", p)
-                    print("u-p", u-p)
+                    #print("normal case")
+                    #print("P", P)
+                    #print("q", q)
+                    #print("G", G)
+                    #print("h", h)
+                    #print("u", u)
+                    #print("p", p)
+                    #print("u-p", u-p)
                     #breakpoint()
                     soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
-                    print("SOLUTION: ", sols)
+                    #print("SOLUTION: ", sols)
                     #breakpoint()
                     solns = sols
 
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
                 knew = np.atleast_1d(solns)
-                print("k is: ", k)
-                print("knew is: ", knew)
+                #print("k is: ", k)
+                #print("knew is: ", knew)
                 k = knew
             elif self.constraint_type == 'None':
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
@@ -345,7 +345,7 @@ class DDP:
         kk_seq.reverse()
         print('k_seq: ',k_seq)
         print('kk_seq: ', kk_seq)
-        print('v_seq: ',self.v)
+        #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
@@ -438,6 +438,36 @@ class DDP:
     def compare_func(self, func):
         for i in range(10):
             print(func(np.array([0],dtype=float),np.array([i],dtype=float)))
+
+    def forward_no_control(self, x_0, u_seq):
+        x_seq_hat = np.zeros(self.pred_time+1)
+        x_seq_hat[0] = x_0
+        u_seq_hat = np.array(u_seq)
+        incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
+        incoming_u_seq_hat = np.array(incoming_u_seq)
+        alpha=0.1
+        incoming_nodes = self.get_incoming_node_list()
+
+        for t in range(self.pred_time):
+
+            incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq_hat)
+            incoming_rewards_arr = incoming_x_seq[t]
+            if t in incoming_nodes[t]:
+                l_ind = incoming_nodes[t].index(t)
+                x = incoming_rewards_arr[l_ind]
+                incoming_rewards_arr.pop(l_ind)
+                additional_x = incoming_rewards_arr
+            else:
+                l_ind = -1
+                additional_x = incoming_rewards_arr
+                x = None
+            #breakpoint()
+            control = np.zeros_like(incoming_u_seq[t])
+            incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
+            x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
+            u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
+            #breakpoint()
+        return x_seq_hat, u_seq_hat
 """
 env = gym.make('CartPoleContinuous-v0').env
 obs = env.reset()
