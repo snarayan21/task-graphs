@@ -20,7 +20,8 @@ def main():
                           track_args['exp']['numrobots'],
                           track_args['exp']['num_tasks'],
                           len(track_args['exp']['edges']),
-                          track_args['exp']['scenario'])
+                          #track_args['exp']['scenario']
+                          )
 
     task_planning.initializeSolver()
     task_planning.solveGraph()
