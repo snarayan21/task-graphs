@@ -19,7 +19,7 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, scenario="test", adaptive=1):
+                 numrobots, scenario="test", adaptive=1, plot_ddp=True):
         self.scenario = scenario
         self.adaptive = adaptive
         self.max_steps = max_steps
@@ -31,6 +31,7 @@ class TaskGraph:
         self.num_edges = len(edges)  # number of edges
 
         self.fig = None
+        self.plot = plot_ddp
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
         # will hold our estimate values
@@ -58,6 +59,10 @@ class TaskGraph:
         # variables used during run-time
         self.flow = None
         self.reward = np.zeros(self.num_tasks)
+
+        #variables used for data logging
+        self.last_baseline_solution = None
+        self.last_ddp_solution = None
 
 
 
@@ -143,7 +148,7 @@ class TaskGraph:
 
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
-        breakpoint()
+        self.last_baseline_solution = scipy_result
 
     def initialize_solver_ddp(self, constraint_type='qp'):
 
@@ -190,26 +195,36 @@ class TaskGraph:
 
     def solve_ddp(self):
         i = 0
-        max_iter = 200
+        max_iter = 100
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
+        reward_history = [-np.sum(self.last_x_seq)]
+
         while i < max_iter and delta > threshold:
-            print("new iteration!!!!")
+            #print("new iteration!!!!")
             #breakpoint()
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
             #breakpoint()
+            #np.set_printoptions(suppress=True)
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
-            np.set_printoptions(suppress=True)
             print("states: ",self.last_x_seq)
             print("actions: ", self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", np.sum(self.last_x_seq))
+            reward_history.append(np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
+        self.last_ddp_solution = self.last_u_seq
+        if self.plot:
+            plt.plot(reward_history)
+            plt.xlabel("Iteration #")
+            plt.ylabel("Reward")
+            plt.show()
+        breakpoint()
 
     def solveGraph(self):
         result = Solve(self.prog)

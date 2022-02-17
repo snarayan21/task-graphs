@@ -13,17 +13,14 @@ def main():
     args = parser.parse_args()
 
     track_args = toml.load(args.cfg)
-
+    task_graph = TaskGraph(**track_args['exp'])
     if args.baseline:
-        np_solver = TaskGraph(**track_args['exp'])
-        #np_solver.initializeSolver()
-        #np_solver.solveGraph()
-        np_solver.solve_graph_scipy()
+        #task_graph.initializeSolver()
+        #task_graph.solveGraph()
+        task_graph.solve_graph_scipy()
 
-    task_planning = TaskGraph(**track_args['exp'])
-
-    task_planning.initialize_solver_ddp(**track_args['ddp'])
-    task_planning.solve_ddp()
+    task_graph.initialize_solver_ddp(**track_args['ddp'])
+    task_graph.solve_ddp()
 
 
     #breakpoint()
