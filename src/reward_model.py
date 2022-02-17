@@ -60,8 +60,15 @@ class RewardModel:
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
             # influencing nodes of node i
+            #breakpoint()
+            #calculate incoming neighbors to node i
+            incoming_node_inds = [edge[0] for edge in list(self.task_graph.in_edges(node_i))]
+            incoming_node_rewards = var_reward_mean[incoming_node_inds]
+            incoming_node_stds = var_reward_stddev[incoming_node_inds]
 
             if eval:
+                raise(NotImplementedError)
+                #TODO: update var_reward and var_reward_stddev argument in below function call to represent the incoming node rewards to node_i
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      var_reward,
@@ -69,10 +76,11 @@ class RewardModel:
                 var_reward[node_i] = np.random.normal(var_reward_mean[node_i], var_reward_stddev[node_i])
 
             else:
+
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
-                                                                                                     var_reward_mean,
-                                                                                                     var_reward_stddev)
+                                                                                                     incoming_node_rewards,
+                                                                                                     incoming_node_stds)
             #breakpoint()
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
@@ -140,9 +148,12 @@ class RewardModel:
 
         def dynamics_b(x, u, node_i, additional_x, l_index):
             """
-            :arg x is the reward at node l, the
+            :arg x is the reward at node l
             :arg u is the vector of flows along the incoming edges to node node_i.
             :arg node_i is the index of the node
+            :arg additional_x is the rest of the vector of rewards for all incoming neighbor nodes to node i
+            :arg l_index is the index in which x, the reward at the node_i in question, should be inserted into the
+            vector of incoming neighbor reward values
             """
             x = np.atleast_1d(x)
             additional_x = np.atleast_1d(additional_x)
@@ -166,6 +177,8 @@ class RewardModel:
         #breakpoint()
         return dynamics_b
 
+    # in dynamics equation, we call this function with a vector of incoming neighbor rewards
+    # in optimizer function, we call this function with a vector of ALL task rewards, on the graph
     def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
         """
         For a given node, this function outputs the mean and std dev of the reward based on the coalition function
@@ -201,10 +214,11 @@ class RewardModel:
                     task_influence_value.append(task_interdep(reward_mean[list_ind],
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
+            #breakpoint()
+        #get_mean_std applies the aggregation function to the influence outputs, and ADDS the coalition function val
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
         #print("node coalition (flow): ", node_coalition)
         #print("task_influence_value: ", task_influence_value)
-        #breakpoint()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
