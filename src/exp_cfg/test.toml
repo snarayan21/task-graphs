@@ -1,0 +1,4 @@
+[exp]
+exp_name = 'test'
+num_nodes = 8
+max_width = 3
