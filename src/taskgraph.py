@@ -161,7 +161,7 @@ class TaskGraph:
             cost_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
 
         self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
-                  cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
+                  cost_func_handle_list,  # l(x, u)
                   lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
