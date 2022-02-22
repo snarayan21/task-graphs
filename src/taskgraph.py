@@ -144,8 +144,10 @@ class TaskGraph:
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
+        #c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
+        c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
+        import pdb; pdb.set_trace()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
