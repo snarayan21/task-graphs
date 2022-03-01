@@ -112,7 +112,7 @@ class RewardModel:
         """
         if not hasattr(self, 'cvar_coeff'):
             # TODO should this be negative? should this look at the lower tail of the distribution instead of the upper??
-            alpha = 0.05
+            alpha = 0.5
             inv_cdf = norm.ppf(alpha)
             numerator = norm.pdf(inv_cdf)
             self.cvar_coeff = - numerator / (1 - alpha)

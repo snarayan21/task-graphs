@@ -33,6 +33,7 @@ class DDP:
 
 
     def backward(self, x_seq, u_seq):
+        #IMPORTANT!: this is NOT the correct ddp_gym file!!!
         # initialize value func
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
@@ -302,7 +303,7 @@ class DDP:
         print('k_seq: ',k_seq)
         print('kk_seq: ', kk_seq)
         print('v_seq: ',self.v)
-        return k_seq, kk_seq
+        #return k_seq, kk_seq
 
     def forward(self, x_seq, u_seq, k_seq, kk_seq):
         x_seq_hat = np.array(x_seq)
