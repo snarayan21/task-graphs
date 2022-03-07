@@ -285,6 +285,7 @@ class DDP:
                     h[1] = u
                     #u + Adu >= p --> Adu >= p - u --> -Adu <= u - p
                     h[2] = u-p
+                    #u + Adu <= p --> Adu <= p - u
                     h[3] = p-u
                     #breakpoint()
                     if(p > 1.0):
@@ -328,12 +329,36 @@ class DDP:
                 #print("k is: ", k)
                 #print("knew is: ", knew)
                 k = knew
+
+                #g is the gradient wrt incoming u to the current node
+                g = q_u + np.matmul(q_uu, np.atleast_1d(incoming_u_seq[l]))
+                
+                #find clamped and free dimensions (1 if free, 0 if clamped)
+                freedims = np.ones(nu)
+                for i in range(nu):
+                    #current incoming flow
+                    curru = incoming_u_seq[l][i]
+                    #current gradient for that flow
+                    currg = g[i]
+                    #clamped if u <= 0 and gradient negative, or u >= 1 and gradient positive
+                    if((curru <= 0 and currg < 0) or (curru >= 1 and currg > 0)):
+                        freedims[i] = 0.0
+                
+                for i in range(nu):
+                    freedim = freedims[i]
+                    #if clamped...set corresponding q_uu row to all zeros
+                    if(freedim == 0.0):
+                        q_uu[i] = np.zeros(nu)
+                
+                #now make the correct big K.
+                kk = -np.matmul(np.atleast_1d(q_uu), np.atleast_1d(q_ux))
+                
             elif self.constraint_type == 'None':
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
+                kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
             else:
                 raise(NotImplementedError)
-                
-            kk = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_ux))
+
             dv = 0.5 * np.matmul(np.atleast_1d(q_u), np.atleast_1d(k))
             self.v[l] += dv
             self.v_x[l] = q_x - np.matmul(np.matmul(np.atleast_1d(q_u), np.atleast_1d(inv_q_uu)), np.atleast_1d(q_ux))
@@ -353,7 +378,7 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=0.1
+        alpha=1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):
