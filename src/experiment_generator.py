@@ -28,7 +28,7 @@ class ExperimentGenerator():
         self.experiment_dir.mkdir(parents=True, exist_ok=False)
 
         # GENERATE RANDOM DAG with parameters num_nodes, max_width
-        self.num_nodes = exp_args['num_nodes']
+        self.num_nodes = exp_args['num_nodes'] #NOTE num_nodes may not be the EXACT number of nodes in the graph - varies by 1 or 2
         self.max_width = exp_args['max_width']
         # TODO use max_width
 
@@ -44,10 +44,8 @@ class ExperimentGenerator():
         for trial_ind in range(self.num_trials):
 
             # generate args for a trial within the parameters loaded into the experiment
-            trial_args = self.generate_taskgraph_args()
+            trial_args, nx_task_graph = self.generate_taskgraph_args()
             task_graph = TaskGraph(**trial_args['exp'])
-
-            import pdb; pdb.set_trace()
 
             #solve baseline
             task_graph.solve_graph_scipy()
@@ -79,6 +77,14 @@ class ExperimentGenerator():
             results_file = trial_dir / "results.toml"
             with open(results_file, "w") as f2:
                 toml.dump(results_dict,f2)
+
+            graph_img_file = trial_dir / "graph.jpg"
+            label_dict = {}
+            for i in range(task_graph.num_tasks):
+                label_dict[i] = str(i)
+            #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
+            nx.draw(nx_task_graph, labels=label_dict)
+            plt.savefig(graph_img_file.absolute())
 
         return trial_arg_list, results_dict_list
 
@@ -127,44 +133,46 @@ class ExperimentGenerator():
             old_node_frontier = new_node_frontier
             new_node_frontier = []
         # terminate all frontier nodes into the sink node
+
         node_list.append(cur_nodes)
         for node in old_node_frontier:
             edge_list.append((node, cur_nodes))
 
         num_edges = len(edge_list)
+        trial_num_nodes = len(node_list)
         nx_task_graph.add_nodes_from(node_list)
         nx_task_graph.add_edges_from(edge_list)
         print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
         print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
-        nx.draw(nx_task_graph)
+        #nx.draw(nx_task_graph)
         #plt.show()
 
         taskgraph_args = {}
         taskgraph_args_exp = {}
         taskgraph_args_exp['max_steps'] = 100
-        taskgraph_args_exp['num_tasks'] = self.num_nodes
+        taskgraph_args_exp['num_tasks'] = trial_num_nodes
         taskgraph_args_exp['edges'] = edge_list
         taskgraph_args_exp['numrobots'] = 1
 
         # sample from coalition types available iteratively to make list of strings
-        taskgraph_args_exp['coalition_types'] = ['polynomial' for _ in range(num_edges)]
+        taskgraph_args_exp['coalition_types'] = ['polynomial' for _ in range(trial_num_nodes)]
 
         # sample corresponding parameters within some defined range to the types in the above list
-        taskgraph_args_exp['coalition_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(num_edges)]
+        taskgraph_args_exp['coalition_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(trial_num_nodes)]
 
         # sample from dependency types available -- list of strings
         taskgraph_args_exp['dependency_types'] = ['polynomial' for _ in range(num_edges)]
 
         # sample corresponding parameters within some defined range to the types in the above list
-        taskgraph_args_exp['dependency_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(num_edges)]
+        taskgraph_args_exp['dependency_params'] = [list(np.random.uniform(-.2,.2,(3,))) for _ in range(num_edges)]
 
         # sample from available agg types -- probably all sum for now???
-        taskgraph_args_exp['aggs'] = ['or' for _ in range(self.num_nodes)]
+        taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp'}
 
-        return taskgraph_args
+        return taskgraph_args, nx_task_graph
 
 def main():
 
@@ -175,9 +183,6 @@ def main():
 
     experiment_generator = ExperimentGenerator(args)
     trial_args, results = experiment_generator.run_trials()
-
-    import pdb; pdb.set_trace()
-    #task_graph = TaskGraph(**track_args['exp'])
 
 if __name__ == '__main__':
     main()
