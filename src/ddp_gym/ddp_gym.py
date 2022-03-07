@@ -110,8 +110,9 @@ class DDP:
                 inv_q_uu = np.linalg.inv(np.atleast_2d(q_uu))
             except np.linalg.LinAlgError:
                 #print("got to here wtf")
-                inv_q_uu = np.zeros_like(q_uu)
-                print('SINGULAR MATRIX: RETURNING ZERO GRADIENT')
+                reg_q_uu = q_uu + np.eye(q_uu.shape[0])*(0.1*np.max(np.linalg.eigvals(q_uu)))
+                inv_q_uu = np.linalg.inv(reg_q_uu)
+                print('SINGULAR MATRIX: APPLYING TIKHONOV REGULARIZATION TERM')
 
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
