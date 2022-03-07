@@ -145,7 +145,9 @@ class TaskGraph:
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
         c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
+        #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
+        import pdb; pdb.set_trace()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
@@ -161,7 +163,7 @@ class TaskGraph:
             cost_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
 
         self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
-                  cost_func_handle_list,  # l(x, u) TODO SOMETHING IS GOING ON HERE
+                  cost_func_handle_list,  # l(x, u)
                   lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
@@ -199,7 +201,7 @@ class TaskGraph:
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
-        reward_history = [-np.sum(self.last_x_seq)]
+        reward_history = []
 
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
