@@ -7,7 +7,7 @@ import argparse
 
 # NP main program
 def main():
-    parser = argparse.ArgumentParser(description='Do a whole experiment.')
+    parser = argparse.ArgumentParser(description='Do a single trial.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
     parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline flag to additionally solve graph with baseline optimizer')
     args = parser.parse_args()

@@ -55,7 +55,7 @@ class RewardModel:
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
-        for node_i in range(self.num_tasks):
+        for node_i in range(1,self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward. Is this the desired behavior? this matches the result of summing states from DDP
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
@@ -81,7 +81,7 @@ class RewardModel:
                                                                                                      node_coalition,
                                                                                                      incoming_node_rewards,
                                                                                                      incoming_node_stds)
-            #breakpoint()
+
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
@@ -219,6 +219,7 @@ class RewardModel:
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
         #print("node coalition (flow): ", node_coalition)
         #print("task_influence_value: ", task_influence_value)
+        #import pdb; pdb.set_trace()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
@@ -257,7 +258,7 @@ class RewardModel:
     def polynomial(self, flow, param):
         val = 0
         for i in range(len(param)):
-            val += param[i]*flow**i
+            val += float(param[i])*flow**i
             #print('poly ', i, flow, val)
         return val
 
