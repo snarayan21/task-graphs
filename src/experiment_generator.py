@@ -6,6 +6,7 @@ import pathlib
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
 class ExperimentGenerator():
 
@@ -47,24 +48,6 @@ class ExperimentGenerator():
             trial_args, nx_task_graph = self.generate_taskgraph_args()
             task_graph = TaskGraph(**trial_args['exp'])
 
-            #solve baseline
-            task_graph.solve_graph_scipy()
-
-            #solve with ddp
-            task_graph.initialize_solver_ddp(**trial_args['ddp'])
-            task_graph.solve_ddp()
-
-            #log results
-            trial_arg_list.append(trial_args)
-            results_dict = {}
-            results_dict['baseline_solution'] = task_graph.last_baseline_solution
-            results_dict['ddp_solution'] = task_graph.last_ddp_solution
-            results_dict['baseline_reward'] = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
-            results_dict['ddp_rewards'] = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
-            # todo log solution time
-
-            results_dict_list.append(results_dict)
-
             #create directory for results
             dir_name = "trial_" + str(trial_ind)
             trial_dir = self.experiment_dir / dir_name
@@ -74,10 +57,6 @@ class ExperimentGenerator():
             with open(args_file, "w") as f:
                 toml.dump(trial_args,f)
 
-            results_file = trial_dir / "results.toml"
-            with open(results_file, "w") as f2:
-                toml.dump(results_dict,f2)
-
             graph_img_file = trial_dir / "graph.jpg"
             label_dict = {}
             for i in range(task_graph.num_tasks):
@@ -85,6 +64,33 @@ class ExperimentGenerator():
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
             nx.draw(nx_task_graph, labels=label_dict)
             plt.savefig(graph_img_file.absolute())
+
+            start = time.time()
+            #solve baseline
+            task_graph.solve_graph_scipy()
+            baseline_fin_time = time.time()
+            baseline_elapsed_time = baseline_fin_time-start
+            #solve with ddp
+            task_graph.initialize_solver_ddp(**trial_args['ddp'])
+            task_graph.solve_ddp()
+            ddp_fin_time = time.time()
+            ddp_elapsed_time = ddp_fin_time-baseline_fin_time
+
+            #log results
+            trial_arg_list.append(trial_args)
+            results_dict = {}
+            results_dict['baseline_reward'] = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
+            results_dict['baseline_solution'] = task_graph.last_baseline_solution
+            results_dict['baseline_solution_time'] = baseline_elapsed_time
+            results_dict['ddp_reward'] = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
+            results_dict['ddp_solution'] = task_graph.last_ddp_solution
+            results_dict['ddp_solution_time'] = ddp_elapsed_time
+
+            results_dict_list.append(results_dict)
+
+            results_file = trial_dir / "results.toml"
+            with open(results_file, "w") as f2:
+                toml.dump(results_dict,f2)
 
         return trial_arg_list, results_dict_list
 
