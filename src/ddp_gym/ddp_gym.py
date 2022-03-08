@@ -87,7 +87,7 @@ class DDP:
               np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
             tmp = np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_xx[l + 1]))
             #breakpoint()
-            q_uu = l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
+            q_uu = np.atleast_2d(np.squeeze(l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)))) + \
               np.dot(np.squeeze(self.v_x[l + 1]), np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
             #q_uu = np.array([[1.0]])
 
@@ -104,7 +104,7 @@ class DDP:
 
                 print("regularizing Quu with lambda = ", lam)
             q_ux = np.squeeze(l_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)) + np.squeeze(np.matmul(np.atleast_1d(tmp), np.atleast_1d(f_x_t))) + \
-              np.squeeze(np.dot(self.v_x[l + 1], np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
+              np.squeeze(np.dot(np.squeeze(self.v_x[l + 1]), np.squeeze(f_ux(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
 
             
             try:
@@ -131,7 +131,7 @@ class DDP:
             if self.constraint_type == 'qp':
                 opts = {'reltol' : 1e-10, 'abstol' : 1e-10, 'feastol' : 1e-10, 'show_progress': False}
 
-                nu = q_u.size
+                nu = q_u.size #dimension of action space
                 #print(nu)
                 curr_inc_mat = self.incmat[l+1]
                 curr_u = []
@@ -157,12 +157,12 @@ class DDP:
                 
                 if(l == self.pred_time - 1):
                     #constraint on p doesn't take place if we are at last node. Only z slack variable
-                    P = np.copy(q_uu)
+                    P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
                     #P = np.hstack((P, np.zeros((P.shape[0], 2))))
                     #P = np.vstack((P, np.zeros((2, P.shape[1]))))
                     #P = cvxopt_matrix(P, tc='d')
                     #q = np.copy(q_x)
-                    q = np.copy(q_u)
+                    q = np.copy(np.atleast_1d(np.squeeze(q_u)))
                     #q = np.vstack((q, np.zeros((2,1))))
                     #A = np.ones((1, nu+1))
                     A = np.full((2, nu+2), 1)
@@ -233,11 +233,11 @@ class DDP:
                     solns = sols
 
                 else:
-                    P = np.copy(q_uu)
+                    P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
                     #P = np.hstack((P, np.zeros((P.shape[0], 3))))
                     #P = np.vstack((P, np.zeros((3, P.shape[1]))))
                     #q = np.copy(q_x)
-                    q = np.copy(q_u)
+                    q = np.copy(np.atleast_1d(np.squeeze(q_u)))
                     #q = np.vstack((q, np.zeros((3,1)))) 
                     A = np.full((3, nu+3), 1)
                     #u + Adu >= p
@@ -345,7 +345,10 @@ class DDP:
                     #current incoming flow
                     curru = incoming_u_seq[l][i]
                     #current gradient for that flow
-                    currg = g[i]
+                    try:
+                        currg = g[i]
+                    except IndexError:
+                        breakpoint()
                     #clamped if u <= 0 and gradient negative, or u >= 1 and gradient positive
                     if((curru <= 0 and currg < 0) or (curru >= 1 and currg > 0)):
                         freedims[i] = 0.0
@@ -371,6 +374,7 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
+            print('Qu: ',q_u)
             #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
