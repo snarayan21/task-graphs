@@ -86,8 +86,9 @@ class DDP:
               np.matmul(np.atleast_2d(np.matmul(np.atleast_2d(f_x_t).T, np.atleast_2d(self.v_xx[l + 1]))), np.atleast_2d(f_x_t)) + \
               np.dot(np.atleast_1d(self.v_x[l + 1]), np.atleast_1d(np.squeeze(f_xx(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind))))
             tmp = np.matmul(np.atleast_2d(f_u_t).T, np.atleast_2d(self.v_xx[l + 1]))
+            #breakpoint()
             q_uu = l_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind) + np.matmul(np.atleast_2d(tmp), np.atleast_2d(f_u_t)) + \
-              np.dot(self.v_x[l + 1], np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
+              np.dot(np.squeeze(self.v_x[l + 1]), np.squeeze(f_uu(np.atleast_1d(x), np.atleast_1d(incoming_u_seq[l]), np.atleast_1d(additional_x), l_ind)))
             #q_uu = np.array([[1.0]])
 
             #for some reason q_uu has 4 dimensions sometimes.
@@ -111,9 +112,12 @@ class DDP:
             except np.linalg.LinAlgError:
                 #print("got to here wtf")
                 reg_q_uu = q_uu + np.eye(q_uu.shape[0])*(0.1*np.max(np.linalg.eigvals(q_uu)))
-                inv_q_uu = np.linalg.inv(reg_q_uu)
-                print('SINGULAR MATRIX: APPLYING TIKHONOV REGULARIZATION TERM')
-
+                try:
+                    inv_q_uu = np.linalg.inv(reg_q_uu)
+                    print('SINGULAR MATRIX: APPLYING TIKHONOV REGULARIZATION TERM')
+                except np.linalg.LinAlgError:
+                    inv_q_uu = np.ones_like(q_uu)
+                    print("TIKHANOV REGULARIZATION FAILED, USING IDENTITY AS INVERSE")
             q_uu = np.atleast_2d(q_uu)
             q_x = np.atleast_2d(q_x)
 
@@ -125,7 +129,7 @@ class DDP:
             
             
             if self.constraint_type == 'qp':
-                opts = {'reltol' : 1e-10, 'abstol' : 1e-10, 'feastol' : 1e-10}
+                opts = {'reltol' : 1e-10, 'abstol' : 1e-10, 'feastol' : 1e-10, 'show_progress': False}
 
                 nu = q_u.size
                 #print(nu)
@@ -221,6 +225,7 @@ class DDP:
                     #print("p", p)
                     #breakpoint()
                     #breakpoint()
+
                     soln = cvxopt_solvers.qp(P, q, G, h, options = opts, verbose=False)
                     sols = np.array(soln['x']).reshape(1,-1)[0]
                     #print("SOLUTION: ", sols)
@@ -379,7 +384,7 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=1
+        alpha=0.1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):
