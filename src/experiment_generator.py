@@ -45,7 +45,7 @@ class ExperimentGenerator():
         for trial_ind in range(self.num_trials):
 
             # generate args for a trial within the parameters loaded into the experiment
-            trial_args, nx_task_graph = self.generate_taskgraph_args()
+            trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
             task_graph = TaskGraph(**trial_args['exp'])
 
             #create directory for results
@@ -62,7 +62,8 @@ class ExperimentGenerator():
             for i in range(task_graph.num_tasks):
                 label_dict[i] = str(i)
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
-            nx.draw(nx_task_graph, labels=label_dict)
+            breakpoint()
+            nx.draw(nx_task_graph, labels=label_dict, pos=node_pos)
             plt.savefig(graph_img_file.absolute())
 
             start = time.time()
@@ -103,6 +104,7 @@ class ExperimentGenerator():
         edge_list = []  # list of edges in form (x,y)
         old_node_frontier = [0]
         new_node_frontier = []
+        frontiers_list = []
         converge_flag = False
         branching_likelihood = 0.4
         cur_nodes = 1  # current number of nodes in the graph
@@ -137,10 +139,12 @@ class ExperimentGenerator():
 
                 converge_flag = converge_rand < branching_likelihood and node != old_node_frontier[-1]
             old_node_frontier = new_node_frontier
+            frontiers_list.append(new_node_frontier)
             new_node_frontier = []
         # terminate all frontier nodes into the sink node
 
         node_list.append(cur_nodes)
+        frontiers_list.append([cur_nodes])
         for node in old_node_frontier:
             edge_list.append((node, cur_nodes))
 
@@ -152,6 +156,23 @@ class ExperimentGenerator():
         print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
         #nx.draw(nx_task_graph)
         #plt.show()
+
+        #generate node positions
+        node_pos = {}
+        x_tot = 4
+        y_tot = 3
+        n_frontiers = len(frontiers_list)+1
+        node_pos[0] = (0,y_tot/2)
+        frontier_ct = 1
+        for frontier in frontiers_list:
+            x_pos = frontier_ct*(1/n_frontiers)*x_tot
+            frontier_ct += 1
+            n_nodes = len(frontier)
+            y_interval = y_tot/n_nodes
+            node_ct = 1
+            for node in frontier:
+                node_pos[node] = (x_pos,y_tot-node_ct*y_interval)
+                node_ct += 1
 
         taskgraph_args = {}
         taskgraph_args_exp = {}
@@ -178,7 +199,7 @@ class ExperimentGenerator():
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp'}
 
-        return taskgraph_args, nx_task_graph
+        return taskgraph_args, nx_task_graph, node_pos
 
 def main():
 
