@@ -156,7 +156,38 @@ class TaskGraph:
     def solve_graph_greedy(self):
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
-        import pdb; pdb.set_trace()
+        node_queue = []
+        curr_node = 0
+
+        while True:
+            out_edges = self.task_graph.out_edges(curr_node)
+            if len(out_edges) == 0:
+                break
+            num_edges = len(out_edges)
+
+            # make cost function handle that takes in edge values and returns rewards
+
+            # get incoming flow quantity to node
+
+            # use coarse discretization to find a good initial state
+
+
+            # take gradient of cost function with respect to edge values
+
+
+            # project gradient onto hyperplane that respects constraints
+
+
+            # take a step along that vector direction
+
+
+            # iterate until convergence
+
+
+            #continue to next node
+            curr_node = node_queue.pop(0)
+            for edge in out_edges:
+                curr_node.append(edge???)
 
 
     def initialize_solver_ddp(self, constraint_type='qp'):
