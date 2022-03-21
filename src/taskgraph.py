@@ -63,6 +63,7 @@ class TaskGraph:
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
+        self.last_greedy_solution = None
 
 
 
@@ -151,6 +152,12 @@ class TaskGraph:
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
+
+    def solve_graph_greedy(self):
+        initial_flow = 1.0
+        self.last_greedy_solution = np.zeros((self.num_edges,))
+        import pdb; pdb.set_trace()
+
 
     def initialize_solver_ddp(self, constraint_type='qp'):
 

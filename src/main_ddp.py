@@ -9,7 +9,8 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description='Do a single trial.')
     parser.add_argument('-cfg', default=None, help='Specify path to the toml file')
-    parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline flag to additionally solve graph with baseline optimizer')
+    parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline (-b) flag to additionally solve graph with baseline optimizer')
+    parser.add_argument('-greedy', '-g', action='store_true', default=False, help='include -greedy (-g) flag to additionally solve graph with greedy algorithm')
     args = parser.parse_args()
 
     track_args = toml.load(args.cfg)
@@ -19,6 +20,9 @@ def main():
         #task_graph.solveGraph()
         task_graph.solve_graph_scipy()
 
+    if args.greedy:
+        task_graph.solve_graph_greedy()
+
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
 
@@ -26,6 +30,12 @@ def main():
     print(task_graph.last_ddp_solution)
     ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
     print('DDP solution reward: ', ddp_reward)
+
+    if args.greedy:
+        print('Greedy solution:' )
+        print(task_graph.last_greedy_solution)
+        g_reward = task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
+        print('Greedy solution reward: ', g_reward)
 
     if args.baseline:
         print('Baseline solution: ')
