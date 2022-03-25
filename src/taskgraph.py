@@ -156,6 +156,7 @@ class TaskGraph:
     def solve_graph_greedy(self):
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
+        num_assigned_edges = 0
         node_queue = []
         curr_node = 0
 
@@ -166,10 +167,22 @@ class TaskGraph:
             num_edges = len(out_edges)
 
             # make cost function handle that takes in edge values and returns rewards
+            def node_cost(f, arg_curr_node, arg_num_assigned_edges):
+                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges],f,np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                rewards = self.reward_model._nodewise_optim_cost_function(input_flows)
+                relevant_reward_inds = list(range(arg_curr_node+1))
+                for n in self.task_graph.neighbors(arg_curr_node):
+                    relevant_reward_inds.append(n)
 
+                relevant_costs = rewards[relevant_reward_inds]
+                return np.sum(relevant_costs)
             # get incoming flow quantity to node
-
+            import pdb; pdb.set_trace();
+            #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
             # use coarse discretization to find a good initial state
+            candidate_flows = []
+            for edge in range(num_edges):
+                
 
 
             # take gradient of cost function with respect to edge values
@@ -184,10 +197,13 @@ class TaskGraph:
             # iterate until convergence
 
 
+            # update self.last_greedy_solution
+
             #continue to next node
+            out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
+            node_queue.extend(out_nbrs)
             curr_node = node_queue.pop(0)
-            for edge in out_edges:
-                curr_node.append(edge???)
+            num_assigned_edges += num_edges
 
 
     def initialize_solver_ddp(self, constraint_type='qp'):
