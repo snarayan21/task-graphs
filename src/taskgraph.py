@@ -12,6 +12,8 @@ from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
+from autograd import grad
+
 import os
 
 
@@ -148,7 +150,7 @@ class TaskGraph:
         c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
         #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
@@ -162,13 +164,15 @@ class TaskGraph:
 
         while True:
             out_edges = self.task_graph.out_edges(curr_node)
+            in_edges = list(self.task_graph.in_edges(curr_node))
+            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
             if len(out_edges) == 0:
                 break
             num_edges = len(out_edges)
 
             # make cost function handle that takes in edge values and returns rewards
-            def node_cost(f, arg_curr_node, arg_num_assigned_edges):
-                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges],f,np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+            def node_reward(f, arg_curr_node, arg_num_assigned_edges):
+                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
                 rewards = self.reward_model._nodewise_optim_cost_function(input_flows)
                 relevant_reward_inds = list(range(arg_curr_node+1))
                 for n in self.task_graph.neighbors(arg_curr_node):
@@ -176,22 +180,38 @@ class TaskGraph:
 
                 relevant_costs = rewards[relevant_reward_inds]
                 return np.sum(relevant_costs)
+
             # get incoming flow quantity to node
-            import pdb; pdb.set_trace();
+            incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
+            import pdb; pdb.set_trace()
             #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
-            # use coarse discretization to find a good initial state
+
+            # use random sampling to find a good initial state
             candidate_flows = []
-            for edge in range(num_edges):
-                
+            cand_flow_rewards = []
+            n_samples = 50
+            for n in range(n_samples):
+                cand_flow = np.random.rand(num_edges)
+                cand_flow = incoming_flow*cand_flow/np.linalg.norm(cand_flow)
+                candidate_flows.append(cand_flow)
+                cand_flow_rewards.append(node_reward(cand_flow))
+
+            #find best initial state NOTE: finding max reward
+            best_ind = np.argmax(np.array(cand_flow_rewards))
+            best_init_state = candidate_flows(best_ind)
+            gradient = grad(node_reward,0)
+
+            # GRADIENT DESCENT
+            max_iter = 50
+            last_state = best_init_state
+            for i in range(max_iter):
+                # take gradient of cost function with respect to edge values
+                gradient_t = grad(last_state)
+
+                # project gradient onto hyperplane that respects constraints
 
 
-            # take gradient of cost function with respect to edge values
-
-
-            # project gradient onto hyperplane that respects constraints
-
-
-            # take a step along that vector direction
+                # take a step along that vector direction
 
 
             # iterate until convergence
@@ -388,3 +408,17 @@ class TaskGraph:
 
             self.fig.canvas.draw()
             plt.show(block=False)
+
+    def discretize(self, num_edges):
+        candidate_points = []
+        #for edge_i in range(num_edges):
+        # JUST RANDOM SAMPLE FOR NOW BC I DON'T WANT TO WASTE MORE TIME ON THIS
+
+        return candidate_points
+
+def discretize_pairwise(max_val):
+    """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""
+    flow_a = np.arange(start=0, stop=max_val+0.1, step=0.1)
+    flow_b = max_val-flow_a
+    import pdb; pdb.set_trace()
+    return np.concatenate((np.expand_dims(flow_a,1),np.expand_dims(flow_b,1)),axis=1).tolist()
