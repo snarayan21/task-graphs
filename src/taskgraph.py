@@ -198,6 +198,7 @@ class TaskGraph:
     def solve_ddp(self):
         i = 0
         max_iter = 100
+        buffer = 0.1
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
@@ -206,7 +207,7 @@ class TaskGraph:
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
             #breakpoint()
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq)
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer)
             #breakpoint()
             #np.set_printoptions(suppress=True)
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
