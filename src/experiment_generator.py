@@ -62,7 +62,6 @@ class ExperimentGenerator():
             for i in range(task_graph.num_tasks):
                 label_dict[i] = str(i)
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
-            breakpoint()
             nx.draw(nx_task_graph, labels=label_dict, pos=node_pos)
             plt.savefig(graph_img_file.absolute())
 
