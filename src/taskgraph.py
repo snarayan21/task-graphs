@@ -199,6 +199,7 @@ class TaskGraph:
         i = 0
         max_iter = 100
         buffer = 0.1
+        alpha = 0.5
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
@@ -210,7 +211,7 @@ class TaskGraph:
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer)
             #breakpoint()
             #np.set_printoptions(suppress=True)
-            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq)
+            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, (alpha/(i+1)**(1/3)))
             print("states: ",self.last_x_seq)
             print("actions: ", self.last_u_seq)
             i += 1

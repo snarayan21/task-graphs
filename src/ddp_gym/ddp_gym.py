@@ -285,10 +285,10 @@ class DDP:
                         G[c+4][c] = -1
                         #for constr (2)
                         G[c+nu+4][c] = 1
-                    #k here is the buffer for the equality constraint. Linearly decreasing on each iteration.
-                    k = buffer - ((buffer * curr_iter)/(max_iter-1))
-                    #k = 0
-                    print("\nk is:", k)
+                    #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
+                    buf = buffer - ((buffer * curr_iter)/(max_iter-1))
+                    #buf = 0
+                    print("\nbuf is:", buf)
                     print("\noutput (p) is:", p)
                     
 
@@ -298,11 +298,11 @@ class DDP:
                     #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
                     h[1] = u
                     #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
-                    h[2] = u-p+k
-                    print("lower bound:", u-p+k)
+                    h[2] = u-p+buf
+                    print("lower bound:", u-p+buf)
                     #u + Adu <= p + k --> Adu <= p - u + k
-                    h[3] = p-u+k
-                    print("upper bound:", p-u+k)
+                    h[3] = p-u+buf
+                    print("upper bound:", p-u+buf)
                     #breakpoint()
                     #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
                     if(p > 1.0):
@@ -394,12 +394,12 @@ class DDP:
         #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
-    def forward(self, x_seq, u_seq, k_seq, kk_seq):
+    def forward(self, x_seq, u_seq, k_seq, kk_seq, alpha):
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=0.5 #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
+        #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):
@@ -416,7 +416,8 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            control = (alpha/(t+1)**(1/3))*k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t]))
+            print("alpha is: ", alpha)
+            control = alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
             u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
