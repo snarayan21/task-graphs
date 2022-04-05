@@ -24,7 +24,9 @@ class DDP:
                  inc_mat,
                  adj_mat,
                  edgelist,
-                 constraint_type='qp'):
+                 constraint_type='qp',
+                 constraint_buffer='True',
+                 alpha_anneal='True'):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -39,6 +41,8 @@ class DDP:
         self.adjmat = adj_mat
         self.edgelist = edgelist
         self.constraint_type = constraint_type
+        self.constraint_buffer = constraint_buffer
+        self.alpha_anneal = alpha_anneal
 
 
     def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer):
@@ -286,8 +290,9 @@ class DDP:
                         #for constr (2)
                         G[c+nu+4][c] = 1
                     #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
-                    buf = buffer - ((buffer * curr_iter)/(max_iter-1))
-                    #buf = 0
+                    buf = 0
+                    if(self.constraint_buffer == 'True'):
+                        buf = buffer - ((buffer * curr_iter)/(max_iter-1))
                     print("\nbuf is:", buf)
                     print("\noutput (p) is:", p)
                     
@@ -394,7 +399,7 @@ class DDP:
         #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
-    def forward(self, x_seq, u_seq, k_seq, kk_seq, alpha):
+    def forward(self, x_seq, u_seq, k_seq, kk_seq, i, alpha):
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
@@ -416,8 +421,11 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            print("alpha is: ", alpha)
-            control = alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
+            curr_alpha = alpha
+            if(self.alpha_anneal == 'True'):
+                curr_alpha = (alpha/(i+1)**(1/3))
+            print("alpha is: ", curr_alpha)
+            control = curr_alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
             u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
