@@ -70,11 +70,17 @@ class ExperimentGenerator():
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
             baseline_elapsed_time = baseline_fin_time-start
+
+            #solve greedy
+            task_graph.solve_graph_greedy()
+            greedy_fin_time = time.time()
+            greedy_elapsed_time = greedy_fin_time-baseline_fin_time
+
             #solve with ddp
             task_graph.initialize_solver_ddp(**trial_args['ddp'])
             task_graph.solve_ddp()
             ddp_fin_time = time.time()
-            ddp_elapsed_time = ddp_fin_time-baseline_fin_time
+            ddp_elapsed_time = ddp_fin_time-greedy_fin_time
 
             #log results
             trial_arg_list.append(trial_args)
@@ -82,6 +88,11 @@ class ExperimentGenerator():
             results_dict['baseline_reward'] = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
+
+            results_dict['greedy_reward'] = task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
+            results_dict['greedy_solution'] = task_graph.last_greedy_solution
+            results_dict['greedy_solution_time'] = greedy_elapsed_time
+
             results_dict['ddp_reward'] = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
             results_dict['ddp_solution'] = task_graph.last_ddp_solution
             results_dict['ddp_solution_time'] = ddp_elapsed_time
