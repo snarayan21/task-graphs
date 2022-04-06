@@ -4,6 +4,7 @@ from autograd import grad, jacobian
 import autograd.numpy as np
 from cvxopt import matrix as cvxopt_matrix
 from cvxopt import solvers as cvxopt_solvers
+import math
 
 
 
@@ -23,7 +24,9 @@ class DDP:
                  inc_mat,
                  adj_mat,
                  edgelist,
-                 constraint_type='qp'):
+                 constraint_type='qp',
+                 constraint_buffer='True',
+                 alpha_anneal='True'):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -38,9 +41,11 @@ class DDP:
         self.adjmat = adj_mat
         self.edgelist = edgelist
         self.constraint_type = constraint_type
+        self.constraint_buffer = constraint_buffer
+        self.alpha_anneal = alpha_anneal
 
 
-    def backward(self, x_seq, u_seq):
+    def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer):
         # initialize value func
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
@@ -284,16 +289,27 @@ class DDP:
                         G[c+4][c] = -1
                         #for constr (2)
                         G[c+nu+4][c] = 1
+                    #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
+                    buf = 0
+                    if(self.constraint_buffer == 'True'):
+                        buf = buffer - ((buffer * curr_iter)/(max_iter-1))
+                    print("\nbuf is:", buf)
+                    print("\noutput (p) is:", p)
+                    
+
                     h = np.zeros(((2*nu) + 4, 1))
                     #u+ Adu <= 1 --> Adu <= 1-u
                     h[0] = 1-u
                     #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
                     h[1] = u
-                    #u + Adu >= p --> Adu >= p - u --> -Adu <= u - p
-                    h[2] = u-p
-                    #u + Adu <= p --> Adu <= p - u
-                    h[3] = p-u
+                    #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
+                    h[2] = u-p+buf
+                    print("lower bound:", u-p+buf)
+                    #u + Adu <= p + k --> Adu <= p - u + k
+                    h[3] = p-u+buf
+                    print("upper bound:", p-u+buf)
                     #breakpoint()
+                    #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
                     if(p > 1.0):
                         h[2] = u-1.0
                         h[3] = 1.0-u
@@ -383,12 +399,12 @@ class DDP:
         #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
-    def forward(self, x_seq, u_seq, k_seq, kk_seq):
+    def forward(self, x_seq, u_seq, k_seq, kk_seq, i, alpha):
         x_seq_hat = np.array(x_seq)
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=0.1
+        #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):
@@ -405,7 +421,11 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            control = alpha*k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t]))
+            curr_alpha = alpha
+            if(self.alpha_anneal == 'True'):
+                curr_alpha = (alpha/(i+1)**(1/3))
+            print("alpha is: ", curr_alpha)
+            control = curr_alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
             u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
