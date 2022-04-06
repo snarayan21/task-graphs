@@ -12,6 +12,8 @@ from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
+from autograd import grad
+
 import os
 
 
@@ -63,6 +65,7 @@ class TaskGraph:
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
+        self.last_greedy_solution = None
 
 
 
@@ -147,13 +150,90 @@ class TaskGraph:
         c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
         #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True'):
 
+    def solve_graph_greedy(self):
+        initial_flow = 1.0
+        self.last_greedy_solution = np.zeros((self.num_edges,))
+        num_assigned_edges = 0
+        node_queue = []
+        curr_node = 0
+
+        while True:
+            out_edges = self.task_graph.out_edges(curr_node)
+            out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+            in_edges = list(self.task_graph.in_edges(curr_node))
+            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
+            if num_assigned_edges == self.num_edges:
+                break
+            num_edges = len(out_edges)
+
+            # make cost function handle that takes in edge values and returns rewards
+            def node_reward(f, arg_curr_node, arg_num_assigned_edges):
+                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
+                relevant_reward_inds = list(range(arg_curr_node+1))
+                for n in self.task_graph.neighbors(arg_curr_node):
+                    relevant_reward_inds.append(n)
+
+                relevant_costs = rewards[relevant_reward_inds]
+                return np.sum(relevant_costs)
+
+            # get incoming flow quantity to node
+            incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
+            if curr_node == 0:
+                incoming_flow = 1.0
+            #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
+
+            # use random sampling to find a good initial state
+            candidate_flows = []
+            cand_flow_rewards = []
+            n_samples = 50
+            for n in range(n_samples):
+                cand_flow = np.random.rand(num_edges)
+                cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
+                candidate_flows.append(cand_flow)
+                cand_flow_rewards.append(node_reward(cand_flow,curr_node,num_assigned_edges))
+
+            #find best initial state NOTE: finding max reward
+            best_ind = np.argmax(np.array(cand_flow_rewards))
+            best_init_state = candidate_flows[best_ind]
+            gradient_func = grad(node_reward,0)
+
+            # GRADIENT DESCENT
+            max_iter = 50
+            dt = 0.1
+            last_state = best_init_state
+            for i in range(max_iter):
+                # take gradient of cost function with respect to edge values
+                gradient_t = gradient_func(last_state,curr_node,num_assigned_edges)
+
+                # TODO: project gradient onto hyperplane that respects constraints
+                # FOR NOW: just normalize new state such that it is valid
+
+                # take a step along that vector direction
+                new_cand_state = last_state + dt*gradient_t
+                for k in range(num_edges):
+                    if new_cand_state[k] < 0:
+                        new_cand_state[k] = 0.00001
+                last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
+
+
+            # update self.last_greedy_solution
+            for (edge_i, new_flow) in zip(out_edge_inds,last_state):
+                self.last_greedy_solution[edge_i] = new_flow
+            # continue to next node
+            out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
+            node_queue.extend(out_nbrs)
+            curr_node = node_queue.pop(0)
+            num_assigned_edges += num_edges
+
+
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True'):
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
                                        # entry i corresponds to the equation for the reward at node i+1
@@ -339,3 +419,17 @@ class TaskGraph:
 
             self.fig.canvas.draw()
             plt.show(block=False)
+
+    def discretize(self, num_edges):
+        candidate_points = []
+        #for edge_i in range(num_edges):
+        # JUST RANDOM SAMPLE FOR NOW BC I DON'T WANT TO WASTE MORE TIME ON THIS
+
+        return candidate_points
+
+def discretize_pairwise(max_val):
+    """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""
+    flow_a = np.arange(start=0, stop=max_val+0.1, step=0.1)
+    flow_b = max_val-flow_a
+    import pdb; pdb.set_trace()
+    return np.concatenate((np.expand_dims(flow_a,1),np.expand_dims(flow_b,1)),axis=1).tolist()
