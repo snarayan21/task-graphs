@@ -45,6 +45,11 @@ def main():
 
         print("Optimality ratio: ", ddp_reward/bl_reward)
 
+    plt.plot(task_graph.ddp_reward_history)
+    plt.xlabel('Iteration #')
+    plt.ylabel('Reward')
+    plt.show()
+
 
     #breakpoint()
     """ for time in range(10):

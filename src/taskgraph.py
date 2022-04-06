@@ -21,7 +21,7 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, scenario="test", adaptive=1, plot_ddp=True):
+                 numrobots, scenario="test", adaptive=1):
         self.scenario = scenario
         self.adaptive = adaptive
         self.max_steps = max_steps
@@ -33,7 +33,6 @@ class TaskGraph:
         self.num_edges = len(edges)  # number of edges
 
         self.fig = None
-        self.plot = plot_ddp
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
         # will hold our estimate values
@@ -65,6 +64,7 @@ class TaskGraph:
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
+        self.ddp_reward_history = None
         self.last_greedy_solution = None
 
 
@@ -306,11 +306,7 @@ class TaskGraph:
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
-        if self.plot:
-            plt.plot(reward_history)
-            plt.xlabel("Iteration #")
-            plt.ylabel("Reward")
-            plt.show()
+        self.ddp_reward_history = reward_history
 
     def solveGraph(self):
         result = Solve(self.prog)

@@ -82,6 +82,14 @@ class ExperimentGenerator():
             ddp_fin_time = time.time()
             ddp_elapsed_time = ddp_fin_time-greedy_fin_time
 
+            ddp_reward_hist_img_file = trial_dir / "ddp_reward_history.jpg"
+            plt.clf() # clear plot before graphing reward history
+            plt.plot(task_graph.ddp_reward_history)
+            plt.xlabel('Iteration #')
+            plt.ylabel('Reward')
+            plt.savefig(ddp_reward_hist_img_file.absolute())
+
+
             #log results
             trial_arg_list.append(trial_args)
             results_dict = {}
