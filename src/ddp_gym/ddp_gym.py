@@ -26,7 +26,8 @@ class DDP:
                  edgelist,
                  constraint_type='qp',
                  constraint_buffer='True',
-                 alpha_anneal='True'):
+                 alpha_anneal='True',
+                 flow_lookahead='True'):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -43,21 +44,28 @@ class DDP:
         self.constraint_type = constraint_type
         self.constraint_buffer = constraint_buffer
         self.alpha_anneal = alpha_anneal
+        self.flow_lookahead = flow_lookahead
 
 
-    def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer):
+    def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer, alpha):
         # initialize value func
+        print(x_seq)
+        print(u_seq)
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
+        #breakpoint()
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
-        #breakpoint()
         incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
+
             incoming_rewards_arr = list(incoming_x_seq[l]) #incoming rewards to node l + 1
+            print("incoming rewards arr:", incoming_rewards_arr)
+            print("incoming node list:", incoming_node_list[l])
+
             if l in incoming_node_list[l]:
                 l_ind = incoming_node_list[l].index(l)
                 x = incoming_rewards_arr[l_ind]
@@ -390,12 +398,32 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
-            print('Qu: ',q_u)
+            print('Qu:', q_u)
+
+            #now partially update the flows.
+            if(self.flow_lookahead == 'True'):
+                #breakpoint()
+                curr_alpha = alpha
+                if(self.alpha_anneal == 'True'):
+                    curr_alpha = (alpha/(curr_iter+1)**(1/3))
+                #breakpoint()
+                new_dus = curr_alpha*(k)
+                for i in range(len(incoming_u_seq[l])):
+                    incoming_u_seq[l][i] = incoming_u_seq[l][i] + new_dus[i]
+                    if(incoming_u_seq[l][i] < 0):
+                        incoming_u_seq[l][i] = 0
+                    if(incoming_u_seq[l][i] > 1):
+                        incoming_u_seq[l][i] = 1
+                u_seq = self.incoming_u_seq_to_u_seq(incoming_u_seq)
             #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
         print('k_seq: ',k_seq)
         print('kk_seq: ', kk_seq)
+        print("incoming_u_seq:", incoming_u_seq)
+        print("u_seq:", u_seq)
+        #breakpoint()
+        
         #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
@@ -406,6 +434,10 @@ class DDP:
         incoming_u_seq_hat = np.array(incoming_u_seq)
         #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
         incoming_nodes = self.get_incoming_node_list()
+
+        curr_alpha = alpha
+        if(self.alpha_anneal == 'True'):
+            curr_alpha = (alpha/(i+1)**(1/3))
 
         for t in range(self.pred_time):
 
@@ -421,10 +453,6 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            curr_alpha = alpha
-            if(self.alpha_anneal == 'True'):
-                curr_alpha = (alpha/(i+1)**(1/3))
-            print("alpha is: ", curr_alpha)
             control = curr_alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]

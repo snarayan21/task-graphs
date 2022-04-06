@@ -152,7 +152,7 @@ class TaskGraph:
         print(scipy_result)
         self.last_baseline_solution = scipy_result
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True'):
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True', flow_lookahead='True'):
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
@@ -167,13 +167,14 @@ class TaskGraph:
                   lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
-                  pred_time=self.num_tasks-1,
+                  pred_time=self.num_tasks - 1,
                   inc_mat=self.reward_model.incidence_mat,
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
                   constraint_type=constraint_type,
                   constraint_buffer=constraint_buffer,
-                  alpha_anneal=alpha_anneal)
+                  alpha_anneal=alpha_anneal,
+                  flow_lookahead=flow_lookahead)
 
         self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
@@ -211,7 +212,7 @@ class TaskGraph:
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
             #breakpoint()
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer)
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer, alpha)
             #breakpoint()
             #np.set_printoptions(suppress=True)
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, alpha)
