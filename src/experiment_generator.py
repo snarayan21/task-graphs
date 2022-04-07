@@ -220,8 +220,8 @@ class ExperimentGenerator():
         dependency_params = []
         for _ in range(num_edges):
             c = np.random.uniform(-0.2,0.2)
-            b = np.random.uniform(0,3)
-            a = np.random.uniform(-b,3)
+            b = np.random.uniform(0,0.2)
+            a = np.random.uniform(-b,0.2)
             dependency_params.append([c,b,a])
         taskgraph_args_exp['dependency_params'] = dependency_params
         # sample from available agg types -- probably all sum for now???
