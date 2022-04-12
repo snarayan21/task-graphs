@@ -90,6 +90,13 @@ class ExperimentGenerator():
             plt.savefig(ddp_reward_hist_img_file.absolute())
             plt.clf()   # clear plot for next iteration
 
+            ddp_constraint_residual_file = trial_dir / "ddp_constraint_residual.jpg"
+            plt.plot(task_graph.constraint_residual)
+            plt.xlabel('Iteration #')
+            plt.ylabel('Constraint Residual Norm')
+            plt.savefig(ddp_constraint_residual_file.absolute())
+            plt.clf()   # clear plot for next iteration
+
             #log results
             trial_arg_list.append(trial_args)
             results_dict = {}

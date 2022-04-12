@@ -461,6 +461,21 @@ class DDP:
         #breakpoint()
         return incoming_u_seq
 
+    def u_seq_to_outgoing_u_seq(self,u_seq):
+        """
+        :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
+        :return: outgoing_u_seq: sequence of outgoing flows, where index i corresponds to the list of outgoing flows
+        from node i.
+        """
+        outgoing_u_seq = []
+        for k in range(0,self.pred_time):
+            out_node_indices = [i for i, x in enumerate(self.adjmat[k,:]) if x==1]
+            u_outgoing = []
+            for out_node_ind in out_node_indices:
+                u_outgoing.append(float(u_seq[self.edgelist.index([k, out_node_ind])]))
+            outgoing_u_seq.append(u_outgoing)
+        return outgoing_u_seq
+
     def get_incoming_node_list(self):
         """
         :return: a list of lists of incoming neighbor nodes, where the i'th entry corresponds to a list of the

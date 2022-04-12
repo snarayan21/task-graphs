@@ -66,6 +66,7 @@ class TaskGraph:
         self.last_ddp_solution = None
         self.ddp_reward_history = None
         self.last_greedy_solution = None
+        self.constraint_residual = None
 
 
 
@@ -287,6 +288,7 @@ class TaskGraph:
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
         reward_history = []
+        constraint_residual = []
 
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
@@ -302,11 +304,13 @@ class TaskGraph:
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", np.sum(self.last_x_seq))
             reward_history.append(np.sum(self.last_x_seq))
+            constraint_residual.append(self.get_constraint_residual(self.last_u_seq))
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
         self.ddp_reward_history = reward_history
+        self.constraint_residual = constraint_residual
 
     def solveGraph(self):
         result = Solve(self.prog)
@@ -422,6 +426,18 @@ class TaskGraph:
         # JUST RANDOM SAMPLE FOR NOW BC I DON'T WANT TO WASTE MORE TIME ON THIS
 
         return candidate_points
+
+    def get_constraint_residual(self, u_seq):
+        incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to inflow to node i+1
+        outgoing_u_seq = self.ddp.u_seq_to_outgoing_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to outflow from node i
+        residuals = []
+        for i in range(1,len(incoming_u_seq)):
+            incoming_f = np.sum(incoming_u_seq[i-1])
+            outgoing_f = np.sum(outgoing_u_seq[i])
+            residuals.append(outgoing_f-incoming_f)
+        return np.linalg.norm(np.array(residuals))
+
+
 
 def discretize_pairwise(max_val):
     """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""
