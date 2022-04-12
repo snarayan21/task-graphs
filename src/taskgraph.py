@@ -145,10 +145,13 @@ class TaskGraph:
 
         # scipy version
         # constraint 1
+        lb2 = np.zeros(self.num_edges)
+        lb2[0] = -1
+        ub2 = np.zeros(self.num_edges)
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
+        c2 = LinearConstraint(self.incidence_mat[0:-1,:], lb=lb2[0:-1], ub=ub2[0:-1])
         #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
         #import pdb; pdb.set_trace()

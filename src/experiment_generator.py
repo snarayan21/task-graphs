@@ -66,21 +66,23 @@ class ExperimentGenerator():
             plt.savefig(graph_img_file.absolute())
 
             start = time.time()
-            #solve baseline
-            task_graph.solve_graph_scipy()
-            baseline_fin_time = time.time()
-            baseline_elapsed_time = baseline_fin_time-start
 
             #solve greedy
             task_graph.solve_graph_greedy()
             greedy_fin_time = time.time()
-            greedy_elapsed_time = greedy_fin_time-baseline_fin_time
+            greedy_elapsed_time = greedy_fin_time-start
 
             #solve with ddp
             task_graph.initialize_solver_ddp(**trial_args['ddp'])
             task_graph.solve_ddp()
             ddp_fin_time = time.time()
             ddp_elapsed_time = ddp_fin_time-greedy_fin_time
+
+             #solve baseline
+            task_graph.solve_graph_scipy()
+            baseline_fin_time = time.time()
+            baseline_elapsed_time = baseline_fin_time-ddp_fin_time
+
 
             ddp_reward_hist_img_file = trial_dir / "ddp_reward_history.jpg"
             plt.clf()   # clear plot before graphing reward history
