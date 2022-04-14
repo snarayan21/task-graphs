@@ -66,6 +66,7 @@ class TaskGraph:
         self.last_ddp_solution = None
         self.ddp_reward_history = None
         self.last_greedy_solution = None
+        self.constraint_violation = None
 
 
 
@@ -232,7 +233,7 @@ class TaskGraph:
             num_assigned_edges += num_edges
 
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True', flow_lookahead='True'):
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='True'):
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
                                        # entry i corresponds to the equation for the reward at node i+1
@@ -287,10 +288,10 @@ class TaskGraph:
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
         reward_history = []
+        constraint_violations = []
 
         while i < max_iter and delta > threshold:
-            #print("new iteration!!!!")
-            #breakpoint()
+            print("new iteration!!!!", i)
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer, alpha)
             #breakpoint()
             #np.set_printoptions(suppress=True)
@@ -303,10 +304,39 @@ class TaskGraph:
             print("reward: ", np.sum(self.last_x_seq))
             reward_history.append(np.sum(self.last_x_seq))
             prev_u_seq = copy(self.last_u_seq)
+            
+            #compute constraint violations from last_u_seq
+            inc_mat = self.reward_model.incidence_mat
+            total_violation = 0.0
+            for l in range(self.num_tasks):
+                curr_inc_mat = inc_mat[l]
+                #curr node inflow
+                u = 0.0
+                for j in range(len(curr_inc_mat)):
+                    if(curr_inc_mat[j] == 1):
+                        u += self.last_u_seq[j]
+                #curr node outflow
+                p = 0.0
+                for j in range(len(curr_inc_mat)):
+                    if(curr_inc_mat[j] == -1):
+                        p += self.last_u_seq[j]
+                
+                if(u < 0.0):
+                    total_violation += 0-u
+                if(p < 0.0):
+                    total_violation += 0-p
+                if(u > 1.0):
+                    total_violation += u-1
+                if(p > 1.0):
+                    total_violation += p-1
+
+            constraint_violations.append(total_violation)
+            print("total constraint violation is: ", total_violation)
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
         self.ddp_reward_history = reward_history
+        self.constraint_violation = constraint_violations
 
     def solveGraph(self):
         result = Solve(self.prog)

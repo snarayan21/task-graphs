@@ -48,6 +48,7 @@ def main():
         print("Optimality ratio: ", ddp_reward/bl_reward)
 
     plt.plot(task_graph.ddp_reward_history)
+    plt.plot(task_graph.constraint_violation, 'r')
     plt.xlabel('Iteration #')
     plt.ylabel('Reward')
     plt.show()

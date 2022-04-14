@@ -25,7 +25,7 @@ class DDP:
                  adj_mat,
                  edgelist,
                  constraint_type='qp',
-                 constraint_buffer='True',
+                 constraint_buffer='soft',
                  alpha_anneal='True',
                  flow_lookahead='True'):
         self.pred_time = pred_time
@@ -63,8 +63,6 @@ class DDP:
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
 
             incoming_rewards_arr = list(incoming_x_seq[l]) #incoming rewards to node l + 1
-            print("incoming rewards arr:", incoming_rewards_arr)
-            print("incoming node list:", incoming_node_list[l])
 
             if l in incoming_node_list[l]:
                 l_ind = incoming_node_list[l].index(l)
@@ -246,113 +244,237 @@ class DDP:
                     solns = sols
 
                 else:
-                    P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
-                    #P = np.hstack((P, np.zeros((P.shape[0], 3))))
-                    #P = np.vstack((P, np.zeros((3, P.shape[1]))))
-                    #q = np.copy(q_x)
-                    q = np.copy(np.atleast_1d(np.squeeze(q_u)))
-                    #q = np.vstack((q, np.zeros((3,1)))) 
-                    A = np.full((3, nu+3), 1)
-                    #u + Adu >= p
-                    #Adu >= p-u
-                    #Adu + y = p-u
-                    #y <= 0
-                    A[0][-3] = 1
-                    A[0][-2] = 0
-                    A[0][-1] = 0
-                    #u + Adu <= 1
-                    #Adu <= 1-u
-                    #Adu + z = 1-u
-                    #z >= 0
-                    A[1][-3] = 0
-                    A[1][-2] = 1
-                    A[1][-1] = 0
-                    #u + Adu >= 0
-                    #Adu >= -u
-                    #Adu + x = -u
-                    #x <= 0
-                    A[2][-3] = 0
-                    A[2][-2] = 0
-                    A[2][-1] = 1
-                    #print(A)
-                    b = np.array([p-u, 1-u, -u])
-                    #need to add constraints on inflow components and on slack variables
-                    #G = np.zeros(((2*nu) + 3, nu+3))
-                    G = np.zeros(((2*nu) + 4, nu))
-                    #y <= 0
-                    #G[0][-3] = 1
-                    #z >= 0 --> -z <= 0
-                    #G[1][-2] = -1
-                    #x <= 0
-                    #G[2][-1] = 1
-                    G[0] = np.ones(nu)
-                    G[1] = -1*np.ones(nu)
-                    G[2] = -1*np.ones(nu)
-                    G[3] = np.ones(nu)
-                    #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
-                    #and
-                    #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
-                    for c in range(nu):
-                        #for constr (1)
-                        G[c+4][c] = -1
-                        #for constr (2)
-                        G[c+nu+4][c] = 1
-                    #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
-                    buf = 0
-                    if(self.constraint_buffer == 'True'):
-                        buf = buffer - ((buffer * curr_iter)/(max_iter-1))
-                    print("\nbuf is:", buf)
-                    print("\noutput (p) is:", p)
+                    if(self.constraint_buffer == 'soft'):
+                        P = np.copy(np.atleast_2d(np.squeeze(q_uu)))
+                        #print("P before:", P)
+                        row = np.zeros(P.shape[1])
+                        P = np.insert(P, P.shape[0], [row], axis=0)
+                        col = np.zeros(P.shape[0])
+                        col[-1] = 1e-1*(curr_iter + 1)
+                        P = np.insert(P, P.shape[1], [col], axis=1)
+                        #print("P after:", P)
+                        #breakpoint()
+                        #P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                        #P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                        #q = np.copy(q_x)
+                        q = np.copy(np.atleast_1d(np.squeeze(q_u)))
+                        #print("q before:", q)
+                        q = np.append(q, [1e-1*(curr_iter + 1)])
+                        #print("q after:", q)
+                        #breakpoint()
+                        #q = np.vstack((q, np.zeros((3,1)))) 
+                        A = np.full((3, nu+3), 1)
+                        #u + Adu >= p
+                        #Adu >= p-u
+                        #Adu + y = p-u
+                        #y <= 0
+                        A[0][-3] = 1
+                        A[0][-2] = 0
+                        A[0][-1] = 0
+                        #u + Adu <= 1
+                        #Adu <= 1-u
+                        #Adu + z = 1-u
+                        #z >= 0
+                        A[1][-3] = 0
+                        A[1][-2] = 1
+                        A[1][-1] = 0
+                        #u + Adu >= 0
+                        #Adu >= -u
+                        #Adu + x = -u
+                        #x <= 0
+                        A[2][-3] = 0
+                        A[2][-2] = 0
+                        A[2][-1] = 1
+                        #print(A)
+                        b = np.array([p-u, 1-u, -u])
+                        #need to add constraints on inflow components and on slack variables
+                        #G = np.zeros(((2*nu) + 3, nu+3))
+                        G = np.zeros(((2*nu) + 4, nu+1))
+                        #y <= 0
+                        #G[0][-3] = 1
+                        #z >= 0 --> -z <= 0
+                        #G[1][-2] = -1
+                        #x <= 0
+                        #G[2][-1] = 1
+                        G[0] = np.ones(nu+1)
+                        G[0][-1] = 0.0
+                        G[1] = -1*np.ones(nu+1)
+                        G[1][-1] = 0.0
+                        G[2] = -1*np.ones(nu+1)
+                        G[3] = np.ones(nu+1)
+                        G[3][-1] = -1.0
+                        #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                        #and
+                        #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                        for c in range(nu):
+                            #for constr (1)
+                            G[c+4][c] = -1
+                            #for constr (2)
+                            G[c+nu+4][c] = 1
+
+                        #print("G is now:", G)
+                        #breakpoint()
+                        h = np.zeros(((2*nu) + 4, 1))
+                        #u+ Adu <= 1 --> Adu <= 1-u
+                        h[0] = 1-u
+                        #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                        h[1] = u
+                        #u + Adu >= p - k --> Adu + k >= p - u --> -Adu - k <= u - p
+                        h[2] = u-p
+                        #print("lower bound:", u-p+buf)
+                        #u + Adu <= p + k --> Adu - k <= p - u
+                        h[3] = p-u
+                        #print("upper bound:", p-u+buf)
+                        #breakpoint()
+                        #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
+                        if(p > 1.0):
+                            h[2] = u-1.0
+                            h[3] = 1.0-u
+                        for i in range(nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = curr_u[i]
+                        for i in range(nu, 2*nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = 1 - curr_u[i-nu]
+
+                        #print(P)
+                        P = cvxopt_matrix(P, tc='d')
+                        q = cvxopt_matrix(q, tc='d')
+                        A = cvxopt_matrix(A, tc='d')
+                        b = cvxopt_matrix(b, tc='d')
+                        G = cvxopt_matrix(G, tc='d')
+                        h= cvxopt_matrix(h, tc='d')
+
+                        #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                        #print("normal case")
+                        #print("P", P)
+                        #print("q", q)
+                        #print("G", G)
+                        #print("h", h)
+                        #print("u", u)
+                        #print("p", p)
+                        #print("u-p", u-p)
+                        #breakpoint()
+                        soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
+                        sols = np.array(soln['x']).reshape(1,-1)[0]
+                        #print("SOLUTION: ", sols)
+                        #breakpoint()
+                        slackbuffer = sols[-1]
+                        solns = sols[:-1]
+                        print("slack buffer is:", slackbuffer)
+                        print("rest of solutions are:", solns)
+                        #breakpoint()
+                    else:
+                        P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
+                        #P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                        #P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                        #q = np.copy(q_x)
+                        q = np.copy(np.atleast_1d(np.squeeze(q_u)))
+                        #q = np.vstack((q, np.zeros((3,1)))) 
+                        A = np.full((3, nu+3), 1)
+                        #u + Adu >= p
+                        #Adu >= p-u
+                        #Adu + y = p-u
+                        #y <= 0
+                        A[0][-3] = 1
+                        A[0][-2] = 0
+                        A[0][-1] = 0
+                        #u + Adu <= 1
+                        #Adu <= 1-u
+                        #Adu + z = 1-u
+                        #z >= 0
+                        A[1][-3] = 0
+                        A[1][-2] = 1
+                        A[1][-1] = 0
+                        #u + Adu >= 0
+                        #Adu >= -u
+                        #Adu + x = -u
+                        #x <= 0
+                        A[2][-3] = 0
+                        A[2][-2] = 0
+                        A[2][-1] = 1
+                        #print(A)
+                        b = np.array([p-u, 1-u, -u])
+                        #need to add constraints on inflow components and on slack variables
+                        #G = np.zeros(((2*nu) + 3, nu+3))
+                        G = np.zeros(((2*nu) + 4, nu))
+                        #y <= 0
+                        #G[0][-3] = 1
+                        #z >= 0 --> -z <= 0
+                        #G[1][-2] = -1
+                        #x <= 0
+                        #G[2][-1] = 1
+                        G[0] = np.ones(nu)
+                        G[1] = -1*np.ones(nu)
+                        G[2] = -1*np.ones(nu)
+                        G[3] = np.ones(nu)
+                        #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                        #and
+                        #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                        for c in range(nu):
+                            #for constr (1)
+                            G[c+4][c] = -1
+                            #for constr (2)
+                            G[c+nu+4][c] = 1
+                        #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
+                        buf = 0
+                        if(self.constraint_buffer == 'hard'):
+                            buf = buffer - ((buffer * curr_iter)/(max_iter-1))
+                        print("\nbuf is:", buf)
+                        print("\noutput (p) is:", p)
+                        
+
+                        h = np.zeros(((2*nu) + 4, 1))
+                        #u+ Adu <= 1 --> Adu <= 1-u
+                        h[0] = 1-u
+                        #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                        h[1] = u
+                        #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
+                        h[2] = u-p+buf
+                        print("lower bound:", u-p+buf)
+                        #u + Adu <= p + k --> Adu <= p - u + k
+                        h[3] = p-u+buf
+                        print("upper bound:", p-u+buf)
+                        #breakpoint()
+                        #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
+                        if(p > 1.0):
+                            h[2] = u-1.0
+                            h[3] = 1.0-u
+                        for i in range(nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = curr_u[i]
+                        for i in range(nu, 2*nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = 1 - curr_u[i-nu]
+
+                        #print(P)
+                        P = cvxopt_matrix(P, tc='d')
+                        q = cvxopt_matrix(q, tc='d')
+                        A = cvxopt_matrix(A, tc='d')
+                        b = cvxopt_matrix(b, tc='d')
+                        G = cvxopt_matrix(G, tc='d')
+                        h= cvxopt_matrix(h, tc='d')
+
+                        #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                        #print("normal case")
+                        #print("P", P)
+                        #print("q", q)
+                        #print("G", G)
+                        #print("h", h)
+                        #print("u", u)
+                        #print("p", p)
+                        #print("u-p", u-p)
+                        #breakpoint()
+                        soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
+                        sols = np.array(soln['x']).reshape(1,-1)[0]
+                        #print("SOLUTION: ", sols)
+                        #breakpoint()
+                        solns = sols
                     
-
-                    h = np.zeros(((2*nu) + 4, 1))
-                    #u+ Adu <= 1 --> Adu <= 1-u
-                    h[0] = 1-u
-                    #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
-                    h[1] = u
-                    #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
-                    h[2] = u-p+buf
-                    print("lower bound:", u-p+buf)
-                    #u + Adu <= p + k --> Adu <= p - u + k
-                    h[3] = p-u+buf
-                    print("upper bound:", p-u+buf)
-                    #breakpoint()
-                    #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
-                    if(p > 1.0):
-                        h[2] = u-1.0
-                        h[3] = 1.0-u
-                    for i in range(nu):
-                        #use curr_u vector from above
-                        #TODO: confirm that indices are consistent
-                        h[i+4] = curr_u[i]
-                    for i in range(nu, 2*nu):
-                        #use curr_u vector from above
-                        #TODO: confirm that indices are consistent
-                        h[i+4] = 1 - curr_u[i-nu]
-
-                    #print(P)
-                    P = cvxopt_matrix(P, tc='d')
-                    q = cvxopt_matrix(q, tc='d')
-                    A = cvxopt_matrix(A, tc='d')
-                    b = cvxopt_matrix(b, tc='d')
-                    G = cvxopt_matrix(G, tc='d')
-                    h= cvxopt_matrix(h, tc='d')
-
-                    #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    #print("normal case")
-                    #print("P", P)
-                    #print("q", q)
-                    #print("G", G)
-                    #print("h", h)
-                    #print("u", u)
-                    #print("p", p)
-                    #print("u-p", u-p)
-                    #breakpoint()
-                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
-                    sols = np.array(soln['x']).reshape(1,-1)[0]
-                    #print("SOLUTION: ", sols)
-                    #breakpoint()
-                    solns = sols
 
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
                 knew = np.atleast_1d(solns)
