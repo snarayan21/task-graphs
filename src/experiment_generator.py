@@ -84,19 +84,23 @@ class ExperimentGenerator():
             baseline_elapsed_time = baseline_fin_time-ddp_fin_time
 
 
-            ddp_reward_hist_img_file = trial_dir / "ddp_reward_history.jpg"
-            plt.clf()   # clear plot before graphing reward history
-            plt.plot(task_graph.ddp_reward_history)
-            plt.xlabel('Iteration #')
-            plt.ylabel('Reward')
-            plt.savefig(ddp_reward_hist_img_file.absolute())
-            plt.clf()   # clear plot for next iteration
+            ddp_data = trial_dir / "ddp_data.jpg"
+            fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
+            axs[0].plot(task_graph.ddp_reward_history)
+            axs[0].set_ylabel('Reward')
 
-            ddp_constraint_residual_file = trial_dir / "ddp_constraint_residual.jpg"
-            plt.plot(task_graph.constraint_residual)
-            plt.xlabel('Iteration #')
-            plt.ylabel('Constraint Residual Norm')
-            plt.savefig(ddp_constraint_residual_file.absolute())
+            axs[1].plot(task_graph.constraint_residual)
+            axs[1].set_ylabel('Constraint Residual Norm')
+
+            axs[2].plot(task_graph.alpha_hist)
+            axs[2].set_ylabel('Alpha value')
+
+            axs[3].plot(task_graph.buffer_hist)
+            axs[3].set_ylabel('Buffer value')
+
+            fig.text(0.5, 0.04, 'Iteration #', ha='center')
+            plt.savefig(ddp_data.absolute())
+
             plt.clf()   # clear plot for next iteration
 
             #log results
