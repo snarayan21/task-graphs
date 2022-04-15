@@ -73,6 +73,7 @@ class TaskGraph:
         self.constraint_residual = None
         self.alpha_hist = None
         self.buffer_hist = None
+        self.constraint_violation = None
 
 
 
@@ -166,7 +167,6 @@ class TaskGraph:
         print(scipy_result)
         self.last_baseline_solution = scipy_result
 
-
     def solve_graph_greedy(self):
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
@@ -244,7 +244,7 @@ class TaskGraph:
             num_assigned_edges += num_edges
 
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True'):
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='True'):
         self.alpha_anneal = alpha_anneal
         self.constraint_buffer = constraint_buffer
 
@@ -261,11 +261,13 @@ class TaskGraph:
                   lambda x: -0.0*x,  # lf(x)
                   100,
                   1,
-                  pred_time=self.num_tasks-1,
+                  pred_time=self.num_tasks - 1,
                   inc_mat=self.reward_model.incidence_mat,
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
-                  constraint_type=constraint_type)
+                  constraint_type=constraint_type,
+                  constraint_buffer=constraint_buffer,
+                  flow_lookahead=flow_lookahead)
 
         self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
@@ -300,6 +302,7 @@ class TaskGraph:
         prev_u_seq = copy(self.last_u_seq)
         reward_history = []
         constraint_residual = []
+        constraint_violations = []
         alpha_hist = []
         buffer_hist = []
 
@@ -309,11 +312,16 @@ class TaskGraph:
             #breakpoint()
             if(self.constraint_buffer == 'True'):
                 buf = buffer - ((buffer * i)/(max_iter-1))
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf)
-            #breakpoint()
-            #np.set_printoptions(suppress=True)
+            else:
+                buf = 0
+
             if(self.alpha_anneal == 'True'):
                 curr_alpha = (alpha/(i+1)**(1/3))
+
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf, curr_alpha)
+            #breakpoint()
+            #np.set_printoptions(suppress=True)
+
             print("alpha is: ", curr_alpha)
             self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, curr_alpha)
             print("states: ",self.last_x_seq)
@@ -329,6 +337,34 @@ class TaskGraph:
             alpha_hist.append(curr_alpha)
             buffer_hist.append(buf)
             prev_u_seq = copy(self.last_u_seq)
+            
+            #compute constraint violations from last_u_seq
+            inc_mat = self.reward_model.incidence_mat
+            total_violation = 0.0
+            for l in range(self.num_tasks):
+                curr_inc_mat = inc_mat[l]
+                #curr node inflow
+                u = 0.0
+                for j in range(len(curr_inc_mat)):
+                    if(curr_inc_mat[j] == 1):
+                        u += self.last_u_seq[j]
+                #curr node outflow
+                p = 0.0
+                for j in range(len(curr_inc_mat)):
+                    if(curr_inc_mat[j] == -1):
+                        p += self.last_u_seq[j]
+                
+                if(u < 0.0):
+                    total_violation += 0-u
+                if(p < 0.0):
+                    total_violation += 0-p
+                if(u > 1.0):
+                    total_violation += u-1
+                if(p > 1.0):
+                    total_violation += p-1
+
+            constraint_violations.append(total_violation)
+            print("total constraint violation is: ", total_violation)
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
@@ -336,6 +372,7 @@ class TaskGraph:
         self.constraint_residual = constraint_residual
         self.alpha_hist = alpha_hist
         self.buffer_hist = buffer_hist
+        self.constraint_violation = constraint_violations
 
     def solveGraph(self):
         result = Solve(self.prog)
