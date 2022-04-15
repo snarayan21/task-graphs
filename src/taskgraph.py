@@ -61,12 +61,18 @@ class TaskGraph:
         self.flow = None
         self.reward = np.zeros(self.num_tasks)
 
+        # variables used for DDP
+        self.alpha_anneal = False
+        self.constraint_buffer = False
+
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
         self.ddp_reward_history = None
         self.last_greedy_solution = None
         self.constraint_residual = None
+        self.alpha_hist = None
+        self.buffer_hist = None
 
 
 
@@ -148,13 +154,14 @@ class TaskGraph:
         lb2 = np.zeros(self.num_edges)
         lb2[0] = -1
         ub2 = np.zeros(self.num_edges)
+        ub2[-1] = 1
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
-        c2 = LinearConstraint(self.incidence_mat[0:-1,:], lb=lb2[0:-1], ub=ub2[0:-1])
+        c2 = LinearConstraint(self.incidence_mat, lb=lb2, ub=ub2)
         #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
-        #import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
@@ -238,6 +245,9 @@ class TaskGraph:
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='True', alpha_anneal='True'):
+        self.alpha_anneal = alpha_anneal
+        self.constraint_buffer = constraint_buffer
+
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
                                        # entry i corresponds to the equation for the reward at node i+1
@@ -255,9 +265,7 @@ class TaskGraph:
                   inc_mat=self.reward_model.incidence_mat,
                   adj_mat=self.reward_model.adjacency_mat,
                   edgelist=self.reward_model.edges,
-                  constraint_type=constraint_type,
-                  constraint_buffer=constraint_buffer,
-                  alpha_anneal=alpha_anneal)
+                  constraint_type=constraint_type)
 
         self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
@@ -292,28 +300,42 @@ class TaskGraph:
         prev_u_seq = copy(self.last_u_seq)
         reward_history = []
         constraint_residual = []
+        alpha_hist = []
+        buffer_hist = []
+
 
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
             #breakpoint()
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer)
+            if(self.constraint_buffer == 'True'):
+                buf = buffer - ((buffer * i)/(max_iter-1))
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf)
             #breakpoint()
             #np.set_printoptions(suppress=True)
-            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, alpha)
+            if(self.alpha_anneal == 'True'):
+                curr_alpha = (alpha/(i+1)**(1/3))
+            print("alpha is: ", curr_alpha)
+            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, curr_alpha)
             print("states: ",self.last_x_seq)
             print("actions: ", self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", np.sum(self.last_x_seq))
+
+            # log data
             reward_history.append(np.sum(self.last_x_seq))
             constraint_residual.append(self.get_constraint_residual(self.last_u_seq))
+            alpha_hist.append(curr_alpha)
+            buffer_hist.append(buf)
             prev_u_seq = copy(self.last_u_seq)
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
         self.ddp_reward_history = reward_history
         self.constraint_residual = constraint_residual
+        self.alpha_hist = alpha_hist
+        self.buffer_hist = buffer_hist
 
     def solveGraph(self):
         result = Solve(self.prog)
