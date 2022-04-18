@@ -242,7 +242,7 @@ class ExperimentGenerator():
 
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp',
-                                 'constraint_buffer': 'hard', #None or 'soft' or 'hard'
+                                 'constraint_buffer': 'soft', #None or 'soft' or 'hard'
                                  'alpha_anneal': 'True', #'True' or 'False'
                                  'flow_lookahead': 'False' #'True' or 'False'
                                  }
