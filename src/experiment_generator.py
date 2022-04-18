@@ -241,7 +241,11 @@ class ExperimentGenerator():
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
         taskgraph_args['exp'] = taskgraph_args_exp
-        taskgraph_args['ddp'] = {'constraint_type': 'qp'}
+        taskgraph_args['ddp'] = {'constraint_type': 'qp',
+                                 'constraint_buffer': 'hard', #None or 'soft' or 'hard'
+                                 'alpha_anneal': 'True', #'True' or 'False'
+                                 'flow_lookahead': 'False' #'True' or 'False'
+                                 }
 
         return taskgraph_args, nx_task_graph, node_pos
 
