@@ -151,19 +151,20 @@ class TaskGraph:
         b = np.zeros(self.num_tasks)
 
         # scipy version
-        # constraint 1
-        lb2 = np.zeros(self.num_edges)
-        lb2[0] = -1
-        ub2 = np.zeros(self.num_edges)
-        ub2[-1] = 1
+        # equality flow constraint
+        lb2 = np.zeros(self.num_tasks-2)
+        ub2 = np.zeros(self.num_tasks-2)
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
+
+        # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
-        c2 = LinearConstraint(self.incidence_mat, lb=lb2, ub=ub2)
-        #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
-        import pdb; pdb.set_trace()
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
+        # inequality constraint on beginning and ending flow
+        c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
+        #import pdb; pdb.set_trace()
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
 
