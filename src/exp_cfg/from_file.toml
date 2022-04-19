@@ -1,0 +1,13 @@
+[exp]
+exp_name = 'test'
+num_trials = 2
+num_nodes = 8 #lower bound on the number of nodes
+max_width = 3 # does nothing right now
+buffer_size = [0.1, 0.2]
+
+from_file = true
+filename = 'cfg/'
+
+
+
+

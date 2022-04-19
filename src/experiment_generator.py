@@ -31,12 +31,27 @@ class ExperimentGenerator():
         # GENERATE RANDOM DAG with parameters num_nodes, max_width
         self.num_nodes = exp_args['num_nodes'] #NOTE num_nodes may not be the EXACT number of nodes in the graph - varies by 1 or 2
         self.max_width = exp_args['max_width']
+        self.from_file = exp_args['from_file']
+        self.filename = exp_args['filename']
         # TODO use max_width
 
     def run_trials(self):
         """Runs all trials for the given experiment. Creates their directories, runs the DDP and baseline solution,
          and saves the results to a file in each directory. Also stores the results in the ExperimentGenerator for
          convenience"""
+        if self.from_file:
+            filename_path = pathlib.Path(self.filename)
+            filename_list = []
+            if filename_path.is_file():
+                self.num_trials = 1
+                filename_list.append(self.filename)
+            else:
+                pathlist = filename_path.glob("*.toml")
+                self.num_trials = 0
+                for path in pathlist:
+                    print(path)
+                    filename_list.append(path.absolute())
+                    self.num_trials += 1
 
         trial_arg_list = []
         results_dict_list = []
@@ -44,8 +59,11 @@ class ExperimentGenerator():
 
         for trial_ind in range(self.num_trials):
 
-            # generate args for a trial within the parameters loaded into the experiment
-            trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
+            if not self.from_file:
+                # generate args for a trial within the parameters loaded into the experiment
+                trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
+            else:
+                trial_args, nx_task_graph, node_pos = load_taskgraph_args(filename_list[trial_ind])
             task_graph = TaskGraph(**trial_args['exp'])
 
             #create directory for results
@@ -220,8 +238,8 @@ class ExperimentGenerator():
         coalition_params = []
         for _ in range(trial_num_nodes):
             c = 0.0
-            b = np.random.uniform(0,3)
-            a = np.random.uniform(-b,3)
+            b = np.random.uniform(0,0.2)
+            a = np.random.uniform(-b,0.2)
             coalition_params.append([c,b,a])
 
         taskgraph_args_exp['coalition_params'] = coalition_params
@@ -233,8 +251,8 @@ class ExperimentGenerator():
         dependency_params = []
         for _ in range(num_edges):
             c = np.random.uniform(-0.2,0.2)
-            b = np.random.uniform(0,3)
-            a = np.random.uniform(-b,3)
+            b = np.random.uniform(0,0.2)
+            a = np.random.uniform(-b,0.2)
             dependency_params.append([c,b,a])
         taskgraph_args_exp['dependency_params'] = dependency_params
         # sample from available agg types -- probably all sum for now???
@@ -248,6 +266,19 @@ class ExperimentGenerator():
                                  }
 
         return taskgraph_args, nx_task_graph, node_pos
+
+def load_taskgraph_args(filename):
+
+    args = toml.load(filename)
+
+    num_tasks = int(args['exp']['num_tasks'])
+    edges = args['exp']['edges']
+
+    task_graph = nx.DiGraph()
+    task_graph.add_nodes_from(range(num_tasks))
+    task_graph.add_edges_from(edges)
+
+    return args, task_graph, None
 
 def main():
 
