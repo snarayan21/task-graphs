@@ -15,5 +15,6 @@ aggs = ["or", "or", "or", "or", "or"] #aggregation functions for the influence f
 
 [ddp]
 constraint_type='qp' #'qp' or 'None'
-constraint_buffer='True' #'True' or 'False'
+constraint_buffer='soft' # 'None' or 'soft' or 'hard'
 alpha_anneal='True' #'True' or 'False'
+flow_lookahead='True' #'True' or 'False'

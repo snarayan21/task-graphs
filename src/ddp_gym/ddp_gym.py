@@ -26,7 +26,7 @@ class DDP:
                  edgelist,
                  constraint_type='qp',
                  constraint_buffer='True',
-                 alpha_anneal='True'):
+                 flow_lookahead='True'):
         self.pred_time = pred_time
         self.umax = umax
         self.v = [0.0 for _ in range(pred_time + 1)]
@@ -42,22 +42,26 @@ class DDP:
         self.edgelist = edgelist
         self.constraint_type = constraint_type
         self.constraint_buffer = constraint_buffer
-        self.alpha_anneal = alpha_anneal
+        self.flow_lookahead = flow_lookahead
 
 
-    def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer):
+    def backward(self, x_seq, u_seq, max_iter, curr_iter, buffer, alpha):
         # initialize value func
+        print(x_seq)
+        print(u_seq)
         self.v[-1] = self.lf(x_seq[-1])
         self.v_x[-1] = self.lf_x(x_seq[-1])
         self.v_xx[-1] = self.lf_xx(x_seq[-1])
+        #breakpoint()
         incoming_x_seq = self.x_seq_to_incoming_x_seq(x_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq)
-        #breakpoint()
         incoming_node_list = self.get_incoming_node_list() #gives the order of the lists of incoming nodes to each node
         k_seq = []
         kk_seq = []
         for l in range(self.pred_time - 1, -1, -1): # (num_tasks-2, num_tasks-3, ..., 0)
+
             incoming_rewards_arr = list(incoming_x_seq[l]) #incoming rewards to node l + 1
+
             if l in incoming_node_list[l]:
                 l_ind = incoming_node_list[l].index(l)
                 x = incoming_rewards_arr[l_ind]
@@ -238,113 +242,235 @@ class DDP:
                     solns = sols
 
                 else:
-                    P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
-                    #P = np.hstack((P, np.zeros((P.shape[0], 3))))
-                    #P = np.vstack((P, np.zeros((3, P.shape[1]))))
-                    #q = np.copy(q_x)
-                    q = np.copy(np.atleast_1d(np.squeeze(q_u)))
-                    #q = np.vstack((q, np.zeros((3,1)))) 
-                    A = np.full((3, nu+3), 1)
-                    #u + Adu >= p
-                    #Adu >= p-u
-                    #Adu + y = p-u
-                    #y <= 0
-                    A[0][-3] = 1
-                    A[0][-2] = 0
-                    A[0][-1] = 0
-                    #u + Adu <= 1
-                    #Adu <= 1-u
-                    #Adu + z = 1-u
-                    #z >= 0
-                    A[1][-3] = 0
-                    A[1][-2] = 1
-                    A[1][-1] = 0
-                    #u + Adu >= 0
-                    #Adu >= -u
-                    #Adu + x = -u
-                    #x <= 0
-                    A[2][-3] = 0
-                    A[2][-2] = 0
-                    A[2][-1] = 1
-                    #print(A)
-                    b = np.array([p-u, 1-u, -u])
-                    #need to add constraints on inflow components and on slack variables
-                    #G = np.zeros(((2*nu) + 3, nu+3))
-                    G = np.zeros(((2*nu) + 4, nu))
-                    #y <= 0
-                    #G[0][-3] = 1
-                    #z >= 0 --> -z <= 0
-                    #G[1][-2] = -1
-                    #x <= 0
-                    #G[2][-1] = 1
-                    G[0] = np.ones(nu)
-                    G[1] = -1*np.ones(nu)
-                    G[2] = -1*np.ones(nu)
-                    G[3] = np.ones(nu)
-                    #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
-                    #and
-                    #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
-                    for c in range(nu):
-                        #for constr (1)
-                        G[c+4][c] = -1
-                        #for constr (2)
-                        G[c+nu+4][c] = 1
-                    #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
-                    buf = 0
-                    if(self.constraint_buffer == 'True'):
-                        buf = buffer - ((buffer * curr_iter)/(max_iter-1))
-                    print("\nbuf is:", buf)
-                    print("\noutput (p) is:", p)
-                    
+                    if(self.constraint_buffer == 'soft'):
+                        P = np.copy(np.atleast_2d(np.squeeze(q_uu)))
+                        #print("P before:", P)
+                        row = np.zeros(P.shape[1])
+                        P = np.insert(P, P.shape[0], [row], axis=0)
+                        col = np.zeros(P.shape[0])
+                        col[-1] = 1e-1*(curr_iter + 1)
+                        P = np.insert(P, P.shape[1], [col], axis=1)
+                        #print("P after:", P)
+                        #breakpoint()
+                        #P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                        #P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                        #q = np.copy(q_x)
+                        q = np.copy(np.atleast_1d(np.squeeze(q_u)))
+                        #print("q before:", q)
+                        q = np.append(q, [1e-1*(curr_iter + 1)])
+                        #print("q after:", q)
+                        #breakpoint()
+                        #q = np.vstack((q, np.zeros((3,1)))) 
+                        A = np.full((3, nu+3), 1)
+                        #u + Adu >= p
+                        #Adu >= p-u
+                        #Adu + y = p-u
+                        #y <= 0
+                        A[0][-3] = 1
+                        A[0][-2] = 0
+                        A[0][-1] = 0
+                        #u + Adu <= 1
+                        #Adu <= 1-u
+                        #Adu + z = 1-u
+                        #z >= 0
+                        A[1][-3] = 0
+                        A[1][-2] = 1
+                        A[1][-1] = 0
+                        #u + Adu >= 0
+                        #Adu >= -u
+                        #Adu + x = -u
+                        #x <= 0
+                        A[2][-3] = 0
+                        A[2][-2] = 0
+                        A[2][-1] = 1
+                        #print(A)
+                        b = np.array([p-u, 1-u, -u])
+                        #need to add constraints on inflow components and on slack variables
+                        #G = np.zeros(((2*nu) + 3, nu+3))
+                        G = np.zeros(((2*nu) + 4, nu+1))
+                        #y <= 0
+                        #G[0][-3] = 1
+                        #z >= 0 --> -z <= 0
+                        #G[1][-2] = -1
+                        #x <= 0
+                        #G[2][-1] = 1
+                        G[0] = np.ones(nu+1)
+                        G[0][-1] = 0.0
+                        G[1] = -1*np.ones(nu+1)
+                        G[1][-1] = 0.0
+                        G[2] = -1*np.ones(nu+1)
+                        G[3] = np.ones(nu+1)
+                        G[3][-1] = -1.0
+                        #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                        #and
+                        #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                        for c in range(nu):
+                            #for constr (1)
+                            G[c+4][c] = -1
+                            #for constr (2)
+                            G[c+nu+4][c] = 1
 
-                    h = np.zeros(((2*nu) + 4, 1))
-                    #u+ Adu <= 1 --> Adu <= 1-u
-                    h[0] = 1-u
-                    #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
-                    h[1] = u
-                    #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
-                    h[2] = u-p+buf
-                    print("lower bound:", u-p+buf)
-                    #u + Adu <= p + k --> Adu <= p - u + k
-                    h[3] = p-u+buf
-                    print("upper bound:", p-u+buf)
-                    #breakpoint()
-                    #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
-                    if(p > 1.0):
-                        h[2] = u-1.0
-                        h[3] = 1.0-u
-                    for i in range(nu):
-                        #use curr_u vector from above
-                        #TODO: confirm that indices are consistent
-                        h[i+4] = curr_u[i]
-                    for i in range(nu, 2*nu):
-                        #use curr_u vector from above
-                        #TODO: confirm that indices are consistent
-                        h[i+4] = 1 - curr_u[i-nu]
+                        #print("G is now:", G)
+                        #breakpoint()
+                        h = np.zeros(((2*nu) + 4, 1))
+                        #u+ Adu <= 1 --> Adu <= 1-u
+                        h[0] = 1-u
+                        #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                        h[1] = u
+                        #u + Adu >= p - k --> Adu + k >= p - u --> -Adu - k <= u - p
+                        h[2] = u-p
+                        #print("lower bound:", u-p+buf)
+                        #u + Adu <= p + k --> Adu - k <= p - u
+                        h[3] = p-u
+                        #print("upper bound:", p-u+buf)
+                        #breakpoint()
+                        #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
+                        if(p > 1.0):
+                            h[2] = u-1.0
+                            h[3] = 1.0-u
+                        for i in range(nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = curr_u[i]
+                        for i in range(nu, 2*nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = 1 - curr_u[i-nu]
 
-                    #print(P)
-                    P = cvxopt_matrix(P, tc='d')
-                    q = cvxopt_matrix(q, tc='d')
-                    A = cvxopt_matrix(A, tc='d')
-                    b = cvxopt_matrix(b, tc='d')
-                    G = cvxopt_matrix(G, tc='d')
-                    h= cvxopt_matrix(h, tc='d')
+                        #print(P)
+                        P = cvxopt_matrix(P, tc='d')
+                        q = cvxopt_matrix(q, tc='d')
+                        A = cvxopt_matrix(A, tc='d')
+                        b = cvxopt_matrix(b, tc='d')
+                        G = cvxopt_matrix(G, tc='d')
+                        h= cvxopt_matrix(h, tc='d')
 
-                    #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
-                    #print("normal case")
-                    #print("P", P)
-                    #print("q", q)
-                    #print("G", G)
-                    #print("h", h)
-                    #print("u", u)
-                    #print("p", p)
-                    #print("u-p", u-p)
-                    #breakpoint()
-                    soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
-                    sols = np.array(soln['x']).reshape(1,-1)[0]
-                    #print("SOLUTION: ", sols)
-                    #breakpoint()
-                    solns = sols
+                        #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                        #print("normal case")
+                        #print("P", P)
+                        #print("q", q)
+                        #print("G", G)
+                        #print("h", h)
+                        #print("u", u)
+                        #print("p", p)
+                        #print("u-p", u-p)
+                        #breakpoint()
+                        soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
+                        sols = np.array(soln['x']).reshape(1,-1)[0]
+                        #print("SOLUTION: ", sols)
+                        #breakpoint()
+                        slackbuffer = sols[-1]
+                        solns = sols[:-1]
+                        print("slack buffer is:", slackbuffer)
+                        print("rest of solutions are:", solns)
+                        #breakpoint()
+                    else:
+                        P = np.copy(np.atleast_1d(np.squeeze(q_uu)))
+                        #P = np.hstack((P, np.zeros((P.shape[0], 3))))
+                        #P = np.vstack((P, np.zeros((3, P.shape[1]))))
+                        #q = np.copy(q_x)
+                        q = np.copy(np.atleast_1d(np.squeeze(q_u)))
+                        #q = np.vstack((q, np.zeros((3,1)))) 
+                        A = np.full((3, nu+3), 1)
+                        #u + Adu >= p
+                        #Adu >= p-u
+                        #Adu + y = p-u
+                        #y <= 0
+                        A[0][-3] = 1
+                        A[0][-2] = 0
+                        A[0][-1] = 0
+                        #u + Adu <= 1
+                        #Adu <= 1-u
+                        #Adu + z = 1-u
+                        #z >= 0
+                        A[1][-3] = 0
+                        A[1][-2] = 1
+                        A[1][-1] = 0
+                        #u + Adu >= 0
+                        #Adu >= -u
+                        #Adu + x = -u
+                        #x <= 0
+                        A[2][-3] = 0
+                        A[2][-2] = 0
+                        A[2][-1] = 1
+                        #print(A)
+                        b = np.array([p-u, 1-u, -u])
+                        #need to add constraints on inflow components and on slack variables
+                        #G = np.zeros(((2*nu) + 3, nu+3))
+                        G = np.zeros(((2*nu) + 4, nu))
+                        #y <= 0
+                        #G[0][-3] = 1
+                        #z >= 0 --> -z <= 0
+                        #G[1][-2] = -1
+                        #x <= 0
+                        #G[2][-1] = 1
+                        G[0] = np.ones(nu)
+                        G[1] = -1*np.ones(nu)
+                        G[2] = -1*np.ones(nu)
+                        G[3] = np.ones(nu)
+                        #(1) u_i + du_i >= 0 --> du_i >= -u_i --> -du_i <= u_i
+                        #and
+                        #(2) u_i + du_i <= 1 --> du_i <= 1 - u_i
+                        for c in range(nu):
+                            #for constr (1)
+                            G[c+4][c] = -1
+                            #for constr (2)
+                            G[c+nu+4][c] = 1
+                        #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
+                        buf = buffer
+                        print("\nbuf is:", buf)
+                        print("\noutput (p) is:", p)
+                        
+
+                        h = np.zeros(((2*nu) + 4, 1))
+                        #u+ Adu <= 1 --> Adu <= 1-u
+                        h[0] = 1-u
+                        #u + Adu >= 0 --> Adu >= -u --> -Adu <= u
+                        h[1] = u
+                        #u + Adu >= p - k --> Adu >= p - u - k --> -Adu <= u - p + k
+                        h[2] = u-p+buf
+                        print("lower bound:", u-p+buf)
+                        #u + Adu <= p + k --> Adu <= p - u + k
+                        h[3] = p-u+buf
+                        print("upper bound:", p-u+buf)
+                        #breakpoint()
+                        #if p (output flow) greater than 1, we act as if the output flow is 1 regardless.
+                        if(p > 1.0):
+                            h[2] = u-1.0
+                            h[3] = 1.0-u
+                        for i in range(nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = curr_u[i]
+                        for i in range(nu, 2*nu):
+                            #use curr_u vector from above
+                            #TODO: confirm that indices are consistent
+                            h[i+4] = 1 - curr_u[i-nu]
+
+                        #print(P)
+                        P = cvxopt_matrix(P, tc='d')
+                        q = cvxopt_matrix(q, tc='d')
+                        A = cvxopt_matrix(A, tc='d')
+                        b = cvxopt_matrix(b, tc='d')
+                        G = cvxopt_matrix(G, tc='d')
+                        h= cvxopt_matrix(h, tc='d')
+
+                        #soln = cvxopt_solvers.qp(P, q, G, h, A, b)
+                        #print("normal case")
+                        #print("P", P)
+                        #print("q", q)
+                        #print("G", G)
+                        #print("h", h)
+                        #print("u", u)
+                        #print("p", p)
+                        #print("u-p", u-p)
+                        #breakpoint()
+                        soln = cvxopt_solvers.qp(P, q, G, h, options = opts)
+                        sols = np.array(soln['x']).reshape(1,-1)[0]
+                        #print("SOLUTION: ", sols)
+                        #breakpoint()
+                        solns = sols
+
 
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
                 knew = np.atleast_1d(solns)
@@ -390,12 +516,30 @@ class DDP:
             self.v_xx[l] = q_xx + np.matmul(np.atleast_1d(q_ux).T, np.atleast_1d(kk))
             k_seq.append(k)
             kk_seq.append(kk)
-            print('Qu: ',q_u)
+            print('Qu:', q_u)
+
+            #now partially update the flows.
+            if(self.flow_lookahead == 'True'):
+                #breakpoint()
+                curr_alpha = alpha
+                #breakpoint()
+                new_dus = curr_alpha*(k)
+                for i in range(len(incoming_u_seq[l])):
+                    incoming_u_seq[l][i] = incoming_u_seq[l][i] + new_dus[i]
+                    if(incoming_u_seq[l][i] < 0):
+                        incoming_u_seq[l][i] = 0
+                    if(incoming_u_seq[l][i] > 1):
+                        incoming_u_seq[l][i] = 1
+                u_seq = self.incoming_u_seq_to_u_seq(incoming_u_seq)
             #breakpoint()
         k_seq.reverse()
         kk_seq.reverse()
         print('k_seq: ',k_seq)
         print('kk_seq: ', kk_seq)
+        print("incoming_u_seq:", incoming_u_seq)
+        print("u_seq:", u_seq)
+        #breakpoint()
+        
         #print('v_seq: ',self.v)
         return k_seq, kk_seq
 
@@ -406,6 +550,7 @@ class DDP:
         incoming_u_seq_hat = np.array(incoming_u_seq)
         #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
         incoming_nodes = self.get_incoming_node_list()
+
 
         for t in range(self.pred_time):
 
@@ -421,11 +566,7 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            curr_alpha = alpha
-            if(self.alpha_anneal == 'True'):
-                curr_alpha = (alpha/(i+1)**(1/3))
-            print("alpha is: ", curr_alpha)
-            control = curr_alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
+            control = alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
             u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
@@ -460,6 +601,21 @@ class DDP:
             incoming_u_seq.append(u_incoming)
         #breakpoint()
         return incoming_u_seq
+
+    def u_seq_to_outgoing_u_seq(self,u_seq):
+        """
+        :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
+        :return: outgoing_u_seq: sequence of outgoing flows, where index i corresponds to the list of outgoing flows
+        from node i.
+        """
+        outgoing_u_seq = []
+        for k in range(0,self.pred_time):
+            out_node_indices = [i for i, x in enumerate(self.adjmat[k,:]) if x==1]
+            u_outgoing = []
+            for out_node_ind in out_node_indices:
+                u_outgoing.append(float(u_seq[self.edgelist.index([k, out_node_ind])]))
+            outgoing_u_seq.append(u_outgoing)
+        return outgoing_u_seq
 
     def get_incoming_node_list(self):
         """
@@ -500,7 +656,6 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=0.1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):

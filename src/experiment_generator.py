@@ -66,15 +66,11 @@ class ExperimentGenerator():
             plt.savefig(graph_img_file.absolute())
 
             start = time.time()
-            #solve baseline
-            task_graph.solve_graph_scipy()
-            baseline_fin_time = time.time()
-            baseline_elapsed_time = baseline_fin_time-start
 
             #solve greedy
             task_graph.solve_graph_greedy()
             greedy_fin_time = time.time()
-            greedy_elapsed_time = greedy_fin_time-baseline_fin_time
+            greedy_elapsed_time = greedy_fin_time-start
 
             #solve with ddp
             task_graph.initialize_solver_ddp(**trial_args['ddp'])
@@ -82,12 +78,29 @@ class ExperimentGenerator():
             ddp_fin_time = time.time()
             ddp_elapsed_time = ddp_fin_time-greedy_fin_time
 
-            ddp_reward_hist_img_file = trial_dir / "ddp_reward_history.jpg"
-            plt.clf()   # clear plot before graphing reward history
-            plt.plot(task_graph.ddp_reward_history)
-            plt.xlabel('Iteration #')
-            plt.ylabel('Reward')
-            plt.savefig(ddp_reward_hist_img_file.absolute())
+             #solve baseline
+            task_graph.solve_graph_scipy()
+            baseline_fin_time = time.time()
+            baseline_elapsed_time = baseline_fin_time-ddp_fin_time
+
+
+            ddp_data = trial_dir / "ddp_data.jpg"
+            fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
+            axs[0].plot(task_graph.ddp_reward_history)
+            axs[0].set_ylabel('Reward')
+
+            axs[1].plot(task_graph.constraint_residual)
+            axs[1].set_ylabel('Constraint Residual Norm')
+
+            axs[2].plot(task_graph.alpha_hist)
+            axs[2].set_ylabel('Alpha value')
+
+            axs[3].plot(task_graph.buffer_hist)
+            axs[3].set_ylabel('Buffer value')
+
+            fig.text(0.5, 0.04, 'Iteration #', ha='center')
+            plt.savefig(ddp_data.absolute())
+
             plt.clf()   # clear plot for next iteration
 
             #log results

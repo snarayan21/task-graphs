@@ -29,7 +29,9 @@ def main():
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)
     ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
+    optimal_reward = task_graph.reward_model.flow_cost([0.5, 0.25, 0.25, 0.25, 0.25])
     print('DDP solution reward: ', ddp_reward)
+    print('Optimal solution reward: ', optimal_reward)
 
     if args.greedy:
         print('Greedy solution:' )
@@ -46,6 +48,7 @@ def main():
         print("Optimality ratio: ", ddp_reward/bl_reward)
 
     plt.plot(task_graph.ddp_reward_history)
+    plt.plot(task_graph.constraint_violation, 'r')
     plt.xlabel('Iteration #')
     plt.ylabel('Reward')
     plt.show()
