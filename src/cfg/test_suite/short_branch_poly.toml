@@ -1,0 +1,17 @@
+[exp]
+max_steps = 100
+num_tasks = 5
+edges = [ [ 0, 1,], [ 1, 2,], [ 1, 3,], [ 2, 4,], [ 3, 4,],]
+numrobots = 1
+coalition_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
+coalition_params = [ [ 0.0, 1.6476021670332053, 0.2780805043171264,], [ 0.0, 1.741842608204378, 2.520217526934196,], [ 0.0, 0.33995749042016665, 1.9644109835005872,], [ 0.0, 0.5282819025418977, 2.1884775822194156,], [ 0.0, 0.8363931955428467, -0.5132524869096373,],]
+dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
+dependency_params = [ [ 0.0036837723548799883, 0.1433742722019764, 0.06718497419763192,], [ -0.07144150496511781, 0.01120850912343554, 0.17228575064730806,], [ 0.039086765260782336, 0.08123877642420846, 0.06482410067029304,], [ 0.0625430076867245, 0.018097822895246973, 0.15345807478057705,], [ 0.08046663058785214, 0.1266425466509361, 0.19713649672703992,],]
+aggs = [ "or", "or", "or", "or", "or",]
+
+[ddp]
+constraint_type = "qp"
+constraint_buffer='hard' # 'None' or 'soft' or 'hard'
+alpha_anneal='False' #'True' or 'False'
+flow_lookahead='False' #'True' or 'False'
+initialize_from_greedy=true

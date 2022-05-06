@@ -63,7 +63,7 @@ class TaskGraph:
 
         # variables used for DDP
         self.alpha_anneal = False
-        self.constraint_buffer = False
+        self.use_constraint_buffer = False
 
         #variables used for data logging
         self.last_baseline_solution = None
@@ -246,9 +246,13 @@ class TaskGraph:
             num_assigned_edges += num_edges
 
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='True'):
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft',
+                              alpha_anneal='True', flow_lookahead='True', initialize_from_greedy=False):
         self.alpha_anneal = alpha_anneal
-        self.constraint_buffer = constraint_buffer
+        if constraint_buffer == 'soft' or constraint_buffer == 'hard':
+            self.use_constraint_buffer = True
+        else:
+            self.use_constraint_buffer = False
 
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
@@ -271,7 +275,10 @@ class TaskGraph:
                   constraint_buffer=constraint_buffer,
                   flow_lookahead=flow_lookahead)
 
-        self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
+        if initialize_from_greedy:
+            self.last_u_seq = self.last_greedy_solution
+        else:
+            self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
         self.last_x_seq = np.zeros((self.num_tasks,))
 
         incoming_nodes = self.ddp.get_incoming_node_list()
@@ -298,29 +305,30 @@ class TaskGraph:
         i = 0
         max_iter = 100
         buffer = 0.1
-        alpha = 0.5
+        alpha = 0.2
         threshold = -1
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
-        reward_history = []
-        constraint_residual = []
-        constraint_violations = []
-        alpha_hist = []
-        buffer_hist = []
+        reward_history = [-1*self.reward_model.flow_cost(prev_u_seq)]
+        constraint_residual = [self.get_constraint_residual(prev_u_seq)]
+        alpha_hist = [alpha]
+        buffer_hist = [buffer]
         delta_hist = []
-        delta_hist_granular = [[] for _ in range(self.num_edges)]
+        delta_hist_granular = [[0.0] for _ in range(self.num_edges)]
 
 
         while i < max_iter and delta > threshold:
             #print("new iteration!!!!")
             #breakpoint()
-            if(self.constraint_buffer == 'True'):
+            if self.use_constraint_buffer:
                 buf = buffer - ((buffer * i)/(max_iter-1))
             else:
                 buf = 0
 
             if(self.alpha_anneal == 'True'):
                 curr_alpha = (alpha/(i+1)**(1/3))
+            else:
+                curr_alpha = alpha
 
             k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf, curr_alpha)
             #breakpoint()
@@ -342,34 +350,7 @@ class TaskGraph:
             alpha_hist.append(curr_alpha)
             buffer_hist.append(buf)
             prev_u_seq = copy(self.last_u_seq)
-            
-            #compute constraint violations from last_u_seq
-            inc_mat = self.reward_model.incidence_mat
-            total_violation = 0.0
-            for l in range(self.num_tasks):
-                curr_inc_mat = inc_mat[l]
-                #curr node inflow
-                u = 0.0
-                for j in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[j] == 1):
-                        u += self.last_u_seq[j]
-                #curr node outflow
-                p = 0.0
-                for j in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[j] == -1):
-                        p += self.last_u_seq[j]
-                
-                if(u < 0.0):
-                    total_violation += 0-u
-                if(p < 0.0):
-                    total_violation += 0-p
-                if(u > 1.0):
-                    total_violation += u-1
-                if(p > 1.0):
-                    total_violation += p-1
 
-            constraint_violations.append(total_violation)
-            print("total constraint violation is: ", total_violation)
             for k in range(self.num_edges):
                 delta_hist_granular[k].append(delta_granular[k])
 
@@ -379,8 +360,8 @@ class TaskGraph:
         self.constraint_residual = constraint_residual
         self.alpha_hist = alpha_hist
         self.buffer_hist = buffer_hist
-        self.constraint_violation = constraint_violations
         self.delta_hist_granular = delta_hist_granular
+
 
 
     def solveGraph(self):
