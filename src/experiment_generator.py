@@ -103,7 +103,7 @@ class ExperimentGenerator():
 
 
             ddp_data = trial_dir / "ddp_data.jpg"
-            fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
+            fig, axs = plt.subplots(5,1,sharex=True, figsize=(6,15))
             axs[0].plot(task_graph.ddp_reward_history)
             axs[0].set_ylabel('Reward')
 
@@ -116,6 +116,10 @@ class ExperimentGenerator():
             axs[3].plot(task_graph.buffer_hist)
             axs[3].set_ylabel('Buffer value')
 
+            for kk, edge in zip(range(task_graph.num_edges), task_graph.task_graph.edges):
+                axs[4].plot(task_graph.delta_hist_granular[kk], label=str(edge))
+            axs[4].set_ylabel('Delta for each edge')
+            axs[4].legend()
             fig.text(0.5, 0.04, 'Iteration #', ha='center')
             plt.savefig(ddp_data.absolute())
 

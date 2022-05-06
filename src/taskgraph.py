@@ -74,6 +74,7 @@ class TaskGraph:
         self.alpha_hist = None
         self.buffer_hist = None
         self.constraint_violation = None
+        self.delta_hist_granular = None
 
 
 
@@ -306,6 +307,8 @@ class TaskGraph:
         constraint_violations = []
         alpha_hist = []
         buffer_hist = []
+        delta_hist = []
+        delta_hist_granular = [[] for _ in range(self.num_edges)]
 
 
         while i < max_iter and delta > threshold:
@@ -328,7 +331,8 @@ class TaskGraph:
             print("states: ",self.last_x_seq)
             print("actions: ", self.last_u_seq)
             i += 1
-            delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
+            delta_granular = np.array(self.last_u_seq) - np.array(prev_u_seq)
+            delta = np.linalg.norm(delta_granular)
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", np.sum(self.last_x_seq))
 
@@ -366,6 +370,8 @@ class TaskGraph:
 
             constraint_violations.append(total_violation)
             print("total constraint violation is: ", total_violation)
+            for k in range(self.num_edges):
+                delta_hist_granular[k].append(delta_granular[k])
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
@@ -374,6 +380,8 @@ class TaskGraph:
         self.alpha_hist = alpha_hist
         self.buffer_hist = buffer_hist
         self.constraint_violation = constraint_violations
+        self.delta_hist_granular = delta_hist_granular
+
 
     def solveGraph(self):
         result = Solve(self.prog)
