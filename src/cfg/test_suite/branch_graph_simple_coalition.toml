@@ -1,0 +1,20 @@
+[exp]
+
+edges = [[0,1],[0,2], [1,6], [2,3], [2, 4],[3, 5], [4,5], [5,7], [6,7]]
+num_tasks = 8
+max_steps = 10
+
+numrobots = 4
+coalition_types = ["null", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "sigmoid", "polynomial"] # polynomial function is param[0] + param[1]*x + param[2]*x^2 ....
+coalition_params = [[0, 0, 0], [0.0, 1.0, -1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 1.0], [1.0, 100.0, 0.5], [0.0, 1.0, 1.0], [0.0, 1.0, 1.0]]
+
+dependency_types = ["polynomial", "polynomial", "polynomial", "polynomial",  "polynomial",  "polynomial",  "polynomial",  "polynomial",  "polynomial"]
+dependency_params = [[0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1], [0.0, 1.0, 0.1]]
+
+aggs = ["or", "or", "or", "or", "or", "or", "or", "or"] #aggregation functions for the influence function agg
+
+[ddp]
+constraint_type='qp' #'qp' or 'None'
+constraint_buffer='hard' # 'None' or 'soft' or 'hard'
+alpha_anneal='True' #'True' or 'False'
+flow_lookahead='False' #'True' or 'False'
