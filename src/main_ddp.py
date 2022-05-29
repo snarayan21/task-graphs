@@ -29,9 +29,9 @@ def main():
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)
     ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
-    optimal_reward = task_graph.reward_model.flow_cost([1, 0.5, 0.5, 0.5, 0.5])
+    #optimal_reward = task_graph.reward_model.flow_cost([1, 0.5, 0.5, 0.5, 0.5])
     print('DDP solution reward: ', ddp_reward)
-    print('Optimal solution reward: ', optimal_reward)
+    #print('Optimal solution reward: ', optimal_reward)
 
     if args.greedy:
         print('Greedy solution:' )

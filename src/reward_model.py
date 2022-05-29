@@ -248,7 +248,7 @@ class RewardModel:
 
     def sigmoid(self, flow, param):
         if type(flow) is AutoDiffXd:
-            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2])))
+            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2]))) # a/(1+e^(-1*b*(x-c)))
         return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
