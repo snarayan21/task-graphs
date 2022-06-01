@@ -69,12 +69,14 @@ class TaskGraph:
         self.last_baseline_solution = None
         self.last_ddp_solution = None
         self.ddp_reward_history = None
+        self.ddp_nodewise_reward_history = None
         self.last_greedy_solution = None
         self.constraint_residual = None
         self.alpha_hist = None
         self.buffer_hist = None
         self.constraint_violation = None
         self.delta_hist_granular = None
+        self.flow_hist = None
 
 
 
@@ -313,6 +315,9 @@ class TaskGraph:
         constraint_residual = [self.get_constraint_residual(prev_u_seq)]
         alpha_hist = [alpha]
         buffer_hist = [buffer]
+        curr_nodewise_reward = -1*self.reward_model._nodewise_optim_cost_function(prev_u_seq)
+        node_reward_hist = [[r] for r in curr_nodewise_reward]
+        flow_hist = [[f] for f in prev_u_seq]
         delta_hist = []
         delta_hist_granular = [[0.0] for _ in range(self.num_edges)]
 
@@ -346,6 +351,8 @@ class TaskGraph:
 
             # log data
             reward_history.append(np.sum(self.last_x_seq))
+            for n in range(self.num_tasks):
+                node_reward_hist[n].append(self.last_x_seq[n])
             constraint_residual.append(self.get_constraint_residual(self.last_u_seq))
             alpha_hist.append(curr_alpha)
             buffer_hist.append(buf)
@@ -353,14 +360,17 @@ class TaskGraph:
 
             for k in range(self.num_edges):
                 delta_hist_granular[k].append(delta_granular[k])
+                flow_hist[k].append(prev_u_seq[k])
 
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
         self.ddp_reward_history = reward_history
+        self.ddp_nodewise_reward_history = node_reward_hist
         self.constraint_residual = constraint_residual
         self.alpha_hist = alpha_hist
         self.buffer_hist = buffer_hist
         self.delta_hist_granular = delta_hist_granular
+        self.flow_hist = flow_hist
 
 
 
