@@ -21,7 +21,7 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, scenario="test", adaptive=1):
+                 numrobots, task_times=None, scenario="test", adaptive=1):
         self.scenario = scenario
         self.adaptive = adaptive
         self.max_steps = max_steps
@@ -31,6 +31,10 @@ class TaskGraph:
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
+
+        if task_times is None:
+            task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
+        self.task_times = task_times
 
         self.fig = None
 
@@ -393,6 +397,11 @@ class TaskGraph:
         """
         # note that this function uses reward_model - the real-world model of the system - rather than the estimate
         self.reward = self.reward_model._nodewise_optim_cost_function(self.flow, eval=True)
+
+    def time_task_execution(self):
+        frontier_nodes = []
+        time = 0
+
 
 
 
