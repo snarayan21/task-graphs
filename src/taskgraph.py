@@ -400,7 +400,23 @@ class TaskGraph:
 
     def time_task_execution(self):
         frontier_nodes = []
-        time = 0
+        task_start_times = np.zeros((self.num_tasks,))
+        task_finish_times = np.zeros((self.num_tasks,))
+
+        nodelist = list(range(self.num_tasks))
+        frontier_nodes.append(nodelist[0])
+        while len(frontier_nodes) > 0:
+            current_node = frontier_nodes.pop(0)
+            incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
+            if len(incoming_nodes) > 0:
+                task_start_times[current_node] = max([task_finish_times[i] for i in incoming_nodes]) # TODO condition on flow coming from that node
+            else:
+                task_start_times[current_node] = 0
+            task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
+            for n in self.task_graph.neighbors(current_node):
+                frontier_nodes.append(n)
+
+        return task_start_times, task_finish_times
 
 
 

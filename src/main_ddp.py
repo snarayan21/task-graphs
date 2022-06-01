@@ -25,6 +25,10 @@ def main():
 
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
+    s,f = task_graph.time_task_execution()
+
+    print(s)
+    print(f)
 
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)
