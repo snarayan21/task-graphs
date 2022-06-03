@@ -109,14 +109,19 @@ class ExperimentGenerator():
             results_dict['baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
+            results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
             results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
             results_dict['greedy_solution'] = task_graph.last_greedy_solution
             results_dict['greedy_solution_time'] = greedy_elapsed_time
+            results_dict['greedy_execution_times'] = task_graph.time_task_execution(task_graph.last_greedy_solution)
+
 
             results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
             results_dict['ddp_solution'] = task_graph.last_ddp_solution
             results_dict['ddp_solution_time'] = ddp_elapsed_time
+            results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
+
 
             results_dict_list.append(results_dict)
 
