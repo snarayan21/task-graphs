@@ -398,7 +398,7 @@ class TaskGraph:
         # note that this function uses reward_model - the real-world model of the system - rather than the estimate
         self.reward = self.reward_model._nodewise_optim_cost_function(self.flow, eval=True)
 
-    def time_task_execution(self):
+    def time_task_execution(self, flow):
         frontier_nodes = []
         task_start_times = np.zeros((self.num_tasks,))
         task_finish_times = np.zeros((self.num_tasks,))
@@ -407,9 +407,14 @@ class TaskGraph:
         frontier_nodes.append(nodelist[0])
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
-            incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
-            if len(incoming_nodes) > 0:
-                task_start_times[current_node] = max([task_finish_times[i] for i in incoming_nodes]) # TODO condition on flow coming from that node
+            incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
+            print(current_node)
+            print(frontier_nodes)
+            print(incoming_edges)
+            #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
+            if len(incoming_edges) > 0:
+                #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
+                task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)]) # TODO condition on flow coming from that node
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
