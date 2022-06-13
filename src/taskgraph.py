@@ -12,6 +12,8 @@ from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
+from minlp import MRTA_XD
+
 from autograd import grad
 
 import os
@@ -57,6 +59,19 @@ class TaskGraph:
                                 dependency_params=dependency_params,
                                 dependency_types=dependency_types,
                                 influence_agg_func_types=aggs)
+
+        self.minlp_obj = MRTA_XD(
+            num_tasks=self.num_tasks,
+            num_robots=self.num_robots,
+            dependency_edges=edges,
+            coalition_params=coalition_params,
+            coalition_types=coalition_types,
+            dependency_params=dependency_params,
+            dependency_types=dependency_types,
+            influence_agg_func_types=aggs,
+            reward_model=self.reward_model,
+            task_graph = self.task_graph
+        )
 
         # variables using in the optimization
         self.var_flow = None
