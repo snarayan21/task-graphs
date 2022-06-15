@@ -1,7 +1,6 @@
 import cyipopt
 import numpy as np
 from autograd import grad, jacobian
-from reward_model import
 
 
 # define problem class
@@ -26,18 +25,26 @@ class MRTA_XD():
 
     def objective(self, x):
         """Returns the scalar value of the objective given x."""
-        x_ak, o_akk, z_k, s_k, f_k = self.partition_x(x)
+        x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
         # x_ak organized by agent
         x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks)) # reshape so each row contains x_ak for agent a
-        task_coalitions = [] # list of coalition size assigned to each task
+        task_coalitions = np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
+        task_coalition_rewards = np.zeros((self.num_tasks,))
+        breakpoint()
         for t in range(self.num_tasks):
-            task_coalitions.append(np.sum(x_ak[:,t])/self.num_robots)
+            task_coalitions[t] = np.sum(x_ak[:,t])/self.num_robots
+            task_coalition_rewards[t] = self.reward_model._compute_node_coalition(t,task_coalitions[t])
+
 
         tasks_ordered = np.argsort(np.array(f_k))
         task_rewards = np.zeros((self.num_tasks,))
         for t in tasks_ordered:
-            task_reward = self.reward_model.get_mean_std(t,task_coalitions[t],[task_rewards[i] for i in self.in_nbrs[t]])
+            breakpoint()
+            task_reward, _ = self.reward_model.compute_node_reward_dist(t,task_coalition_rewards[t],[task_rewards[k] for k in self.in_nbrs[t]], np.zeros_like(task_rewards))
             task_rewards[t] = task_reward
+
+        print('task coalitions: ', task_coalitions)
+        print('task_rewards: ', task_rewards)
 
         return np.sum(task_rewards)
 
@@ -104,7 +111,7 @@ class MRTA_XD():
 
     def partition_x(self, x):
         x_len = self.num_tasks*self.num_robots
-        o_len = self.num_robots*(self.num_tasks**2)
+        o_len = self.num_robots*(self.num_tasks*(self.num_tasks - 1))
         z_len = x_len
         s_len = self.num_tasks
         f_len = self.num_tasks
@@ -116,31 +123,31 @@ class MRTA_XD():
 
         return x_ak, o_akk, z_ak, s_k, f_k
 
-
-lb = [1.0, 1.0, 1.0, 1.0]
-ub = [5.0, 5.0, 5.0, 5.0]
-
-cl = [25.0, 40.0]
-cu = [2.0e19, 40.0]
-
-x0 = [1.0, 5.0, 5.0, 1.0]
-
-
-
-
-nlp = cyipopt.problem(
-   n=len(x0),
-   m=len(cl),
-   problem_obj=MRTA_XD(),
-   lb=lb,
-   ub=ub,
-   cl=cl,
-   cu=cu,
-)
-prob_obj = MRTA_XD()
-#breakpoint()
-nlp.addOption('mu_strategy', 'adaptive')
-nlp.addOption('tol', 1e-7)
-
-x, info = nlp.solve(x0)
-print(x)
+#
+# lb = [1.0, 1.0, 1.0, 1.0]
+# ub = [5.0, 5.0, 5.0, 5.0]
+#
+# cl = [25.0, 40.0]
+# cu = [2.0e19, 40.0]
+#
+# x0 = [1.0, 5.0, 5.0, 1.0]
+#
+#
+#
+#
+# nlp = cyipopt.problem(
+#    n=len(x0),
+#    m=len(cl),
+#    problem_obj=MRTA_XD(),
+#    lb=lb,
+#    ub=ub,
+#    cl=cl,
+#    cu=cu,
+# )
+# prob_obj = MRTA_XD()
+# #breakpoint()
+# nlp.addOption('mu_strategy', 'adaptive')
+# nlp.addOption('tol', 1e-7)
+#
+# x, info = nlp.solve(x0)
+# print(x)

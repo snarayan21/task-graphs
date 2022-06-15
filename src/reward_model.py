@@ -179,14 +179,14 @@ class RewardModel:
 
     # in dynamics equation, we call this function with a vector of incoming neighbor rewards
     # in optimizer function, we call this function with a vector of ALL task rewards, on the graph
-    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std):
+    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std,debug=False):
         """
         For a given node, this function outputs the mean and std dev of the reward based on the coalition function
         of the node, the reward means of influencing nodes, and the corresponding task influence functions
         TODO: use reward std of previous nodes in computation as well?
         :param node_i: shape=(1x1), index of node for which coalition function has to be evaluated
         :param node_coalition: shape=(1x1),  coalition value for the node
-        :param reward_mean: shape=(num_tasks x 1), mean of rewards for all tasks (only partially filled)
+        :param reward_mean: shape=(num_tasks x 1), mean of rewards for incoming tasks
         :param reward_std: shape=(num_tasks x 1), std dev of rewards for all tasks (only partially filled)
         :return: (mean, std) - two scalars
         """
