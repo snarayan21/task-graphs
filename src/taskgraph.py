@@ -547,59 +547,65 @@ class TaskGraph:
 
     def test_minlp(self):
 
-        case_a = False
-        case_b = True
+        case_a = True
+        case_b = False
         if case_a:
-            x_ak = np.zeros((self.num_tasks*self.num_robots,))
-            o_akk = np.zeros((self.num_robots*(self.num_tasks*(self.num_tasks-1)),))
+            x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
+            o_akk = np.zeros((self.num_robots*((self.num_tasks+1)*(self.num_tasks-1)),))
             z_ak = np.zeros((self.num_tasks*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
 
-            x_ak[0] = 1
+            x_ak[0] = 1 # dummy task
             x_ak[1] = 1
             x_ak[2] = 1
-            x_ak[4] = 1
+            x_ak[3] = 1
+            x_ak[5] = 1
 
             o_akk[0] = 1
-            o_akk[5] = 1
-            o_akk[11] = 1
-            print(x_ak,o_akk,z_ak,s_k,f_k)
+            o_akk[4] = 1
+            o_akk[9] = 1
+            o_akk[15] = 1
+            print(x_ak, o_akk, z_ak, s_k, f_k)
 
             x_vec = np.concatenate((x_ak, o_akk, z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
 
         if case_b:
-            x_ak = np.zeros((self.num_tasks*self.num_robots,))
+            x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             o_akk = np.zeros((self.num_robots*(self.num_tasks**2-1),))
             z_ak = np.zeros((self.num_tasks*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
 
             #agent 0 does tasks 0, 1, 2, 4
-            x_ak[0] = 1
+            x_ak[0] = 1 # dummy task
             x_ak[1] = 1
             x_ak[2] = 1
-            x_ak[4] = 1
+            x_ak[3] = 1
+            x_ak[5] = 1
 
             o_akk[0] = 1
-            o_akk[5] = 1
-            o_akk[11] = 1
+            o_akk[4] = 1
+            o_akk[9] = 1
+            o_akk[15] = 1
 
             #agent 1 does tasks 0, 1, 3, 4
-            x_ak[5] = 1
-            x_ak[6] = 1
+            x_ak[6] = 1 # dummy task
+            x_ak[7] = 1
             x_ak[8] = 1
-            x_ak[9] = 1
+            x_ak[10] = 1
+            x_ak[11] = 1
 
-            o_akk[20] = 1
-            o_akk[26] = 1
-            o_akk[35] = 1
+            o_akk[24]
+            o_akk[28] = 1
+            o_akk[34] = 1
+            o_akk[43] = 1
 
             print(x_ak,o_akk,z_ak,s_k,f_k)
             x_vec = np.concatenate((x_ak, o_akk, z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
-        breakpoint()
+        import pdb; pdb.set_trace()
 
 
 def discretize_pairwise(max_val):

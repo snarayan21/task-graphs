@@ -1,4 +1,4 @@
-import cyipopt
+#import cyipopt
 import numpy as np
 from autograd import grad, jacobian
 
@@ -27,10 +27,12 @@ class MRTA_XD():
         """Returns the scalar value of the objective given x."""
         x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
         # x_ak organized by agent
-        x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks)) # reshape so each row contains x_ak for agent a
+        x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
+        x_dummy = x_ak[:,0]
+        x_ak = x_ak[:,1:]
         task_coalitions = np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
         task_coalition_rewards = np.zeros((self.num_tasks,))
-        breakpoint()
+        import pdb; pdb.set_trace()
         for t in range(self.num_tasks):
             task_coalitions[t] = np.sum(x_ak[:,t])/self.num_robots
             task_coalition_rewards[t] = self.reward_model._compute_node_coalition(t,task_coalitions[t])
@@ -39,7 +41,7 @@ class MRTA_XD():
         tasks_ordered = np.argsort(np.array(f_k))
         task_rewards = np.zeros((self.num_tasks,))
         for t in tasks_ordered:
-            breakpoint()
+            import pdb; pdb.set_trace()
             task_reward, _ = self.reward_model.compute_node_reward_dist(t,task_coalition_rewards[t],[task_rewards[k] for k in self.in_nbrs[t]], np.zeros_like(task_rewards))
             task_rewards[t] = task_reward
 
@@ -62,6 +64,10 @@ class MRTA_XD():
 
     def constraints(self, x):
         """Returns the constraints."""
+        x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
+
+        # constraint a: every agent starts with one dummy task
+        # constraint d: every task has exactly one predecessor
         return np.array((np.prod(x), np.dot(x, x)))
 
     def jacobian(self, x):
@@ -110,9 +116,9 @@ class MRTA_XD():
         print(msg.format(iter_count, obj_value))
 
     def partition_x(self, x):
-        x_len = self.num_tasks*self.num_robots
-        o_len = self.num_robots*(self.num_tasks*(self.num_tasks - 1))
-        z_len = x_len
+        x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+        o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks - 1)) #extra dummy task, remove duplicates
+        z_len = self.num_tasks*self.num_robots #each agent can finish on each task
         s_len = self.num_tasks
         f_len = self.num_tasks
         x_ak = x[0:x_len]
