@@ -547,11 +547,11 @@ class TaskGraph:
 
     def test_minlp(self):
 
-        case_a = True
-        case_b = False
+        case_a = False
+        case_b = True
         if case_a:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
-            o_akk = np.zeros((self.num_robots*((self.num_tasks+1)*(self.num_tasks-1)),))
+            o_akk = np.zeros((self.num_robots,self.num_tasks+1, self.num_tasks),)
             z_ak = np.zeros((self.num_tasks*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
@@ -562,18 +562,19 @@ class TaskGraph:
             x_ak[3] = 1
             x_ak[5] = 1
 
-            o_akk[0] = 1
-            o_akk[4] = 1
-            o_akk[9] = 1
-            o_akk[15] = 1
+            o_akk[0,0,0] = 1 # task __ -> 0
+            o_akk[0,1,1] = 1 # task 0 -> 1
+            o_akk[0,2,2] = 1 # task 1 -> 2
+            o_akk[0,3,4] = 1 # task 2 -> 4
+
             print(x_ak, o_akk, z_ak, s_k, f_k)
 
-            x_vec = np.concatenate((x_ak, o_akk, z_ak,s_k,f_k))
+            x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
 
         if case_b:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
-            o_akk = np.zeros((self.num_robots*(self.num_tasks**2-1),))
+            o_akk = np.zeros((self.num_robots,self.num_tasks+1, self.num_tasks),)
             z_ak = np.zeros((self.num_tasks*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
@@ -585,10 +586,11 @@ class TaskGraph:
             x_ak[3] = 1
             x_ak[5] = 1
 
-            o_akk[0] = 1
-            o_akk[4] = 1
-            o_akk[9] = 1
-            o_akk[15] = 1
+
+            o_akk[0,0,0] = 1 # task __ -> 0
+            o_akk[0,1,1] = 1 # task 0 -> 1
+            o_akk[0,2,2] = 1 # task 1 -> 2
+            o_akk[0,3,4] = 1 # task 2 -> 4
 
             #agent 1 does tasks 0, 1, 3, 4
             x_ak[6] = 1 # dummy task
@@ -597,13 +599,13 @@ class TaskGraph:
             x_ak[10] = 1
             x_ak[11] = 1
 
-            o_akk[24]
-            o_akk[28] = 1
-            o_akk[34] = 1
-            o_akk[43] = 1
+            o_akk[1,0,0] = 1 # task __ -> 0
+            o_akk[1,1,1] = 1 # task 0 -> 1
+            o_akk[1,2,3] = 1 # task 1 -> 3
+            o_akk[1,4,4] = 1 # task 3 -> 4
 
             print(x_ak,o_akk,z_ak,s_k,f_k)
-            x_vec = np.concatenate((x_ak, o_akk, z_ak,s_k,f_k))
+            x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
         import pdb; pdb.set_trace()
 
