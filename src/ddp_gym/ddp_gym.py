@@ -25,8 +25,7 @@ class DDP:
                  adj_mat,
                  edgelist,
                  constraint_type='qp',
-                 constraint_buffer='soft',
-                 alpha_anneal='True',
+                 constraint_buffer='True',
                  flow_lookahead='True'):
         self.pred_time = pred_time
         self.umax = umax
@@ -43,7 +42,6 @@ class DDP:
         self.edgelist = edgelist
         self.constraint_type = constraint_type
         self.constraint_buffer = constraint_buffer
-        self.alpha_anneal = alpha_anneal
         self.flow_lookahead = flow_lookahead
 
 
@@ -420,9 +418,7 @@ class DDP:
                             #for constr (2)
                             G[c+nu+4][c] = 1
                         #buf here is the buffer for the equality constraint. Linearly decreasing on each iteration.
-                        buf = 0
-                        if(self.constraint_buffer == 'hard'):
-                            buf = buffer - ((buffer * curr_iter)/(max_iter-1))
+                        buf = buffer
                         print("\nbuf is:", buf)
                         print("\noutput (p) is:", p)
                         
@@ -475,7 +471,7 @@ class DDP:
                         #print("SOLUTION: ", sols)
                         #breakpoint()
                         solns = sols
-                    
+
 
                 k = -np.matmul(np.atleast_1d(inv_q_uu), np.atleast_1d(q_u))
                 knew = np.atleast_1d(solns)
@@ -527,8 +523,6 @@ class DDP:
             if(self.flow_lookahead == 'True'):
                 #breakpoint()
                 curr_alpha = alpha
-                if(self.alpha_anneal == 'True'):
-                    curr_alpha = (alpha/(curr_iter+1)**(1/3))
                 #breakpoint()
                 new_dus = curr_alpha*(k)
                 for i in range(len(incoming_u_seq[l])):
@@ -558,9 +552,6 @@ class DDP:
         #we want to anneal alpha over the course of the algorithm, divide by sqrt(t+1)
         incoming_nodes = self.get_incoming_node_list()
 
-        curr_alpha = alpha
-        if(self.alpha_anneal == 'True'):
-            curr_alpha = (alpha/(i+1)**(1/3))
 
         for t in range(self.pred_time):
 
@@ -576,7 +567,7 @@ class DDP:
                 additional_x = incoming_rewards_arr
                 x = None
             #breakpoint()
-            control = curr_alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
+            control = alpha*(k_seq[t] + np.atleast_1d(kk_seq[t]) * (np.atleast_1d(x_seq_hat[t]) - np.atleast_1d(x_seq[t])))
             incoming_u_seq_hat[t] = np.clip(incoming_u_seq[t] + control, -self.umax, self.umax)
             x_seq_hat[t + 1] = self.f[t](x, incoming_u_seq_hat[t], additional_x,l_ind) # TODO maybe this should be f[t+1]
             u_seq_hat = self.incoming_u_seq_to_u_seq(incoming_u_seq_hat)
@@ -611,6 +602,21 @@ class DDP:
             incoming_u_seq.append(u_incoming)
         #breakpoint()
         return incoming_u_seq
+
+    def u_seq_to_outgoing_u_seq(self,u_seq):
+        """
+        :param u_seq: sequence of flows, where index i corresponds to the flow in edge i
+        :return: outgoing_u_seq: sequence of outgoing flows, where index i corresponds to the list of outgoing flows
+        from node i.
+        """
+        outgoing_u_seq = []
+        for k in range(0,self.pred_time):
+            out_node_indices = [i for i, x in enumerate(self.adjmat[k,:]) if x==1]
+            u_outgoing = []
+            for out_node_ind in out_node_indices:
+                u_outgoing.append(float(u_seq[self.edgelist.index([k, out_node_ind])]))
+            outgoing_u_seq.append(u_outgoing)
+        return outgoing_u_seq
 
     def get_incoming_node_list(self):
         """
@@ -651,7 +657,6 @@ class DDP:
         u_seq_hat = np.array(u_seq)
         incoming_u_seq = self.u_seq_to_incoming_u_seq(u_seq_hat)
         incoming_u_seq_hat = np.array(incoming_u_seq)
-        alpha=0.1
         incoming_nodes = self.get_incoming_node_list()
 
         for t in range(self.pred_time):

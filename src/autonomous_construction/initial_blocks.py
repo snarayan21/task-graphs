@@ -231,7 +231,7 @@ def export_toml_file(G, draw, heights, blocks, tower_contact_edges, tower_interl
         if e in contact_edgelist:
             dependency_params.append([0.0, 2.0, 0.0])
         elif e in interlayer_edgelist:
-            dependency_params.append([0.0, 1.0, 0.0])
+            dependency_params.append([0.0, 0.0, 0.0])
         else:
             dependency_params.append([0.0, 1.0, 0.0])
 

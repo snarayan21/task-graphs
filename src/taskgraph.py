@@ -21,7 +21,7 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, scenario="test", adaptive=1):
+                 numrobots, task_times=None, scenario="test", adaptive=1):
         self.scenario = scenario
         self.adaptive = adaptive
         self.max_steps = max_steps
@@ -31,6 +31,10 @@ class TaskGraph:
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
+
+        if task_times is None:
+            task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
+        self.task_times = task_times
 
         self.fig = None
 
@@ -61,11 +65,18 @@ class TaskGraph:
         self.flow = None
         self.reward = np.zeros(self.num_tasks)
 
+        # variables used for DDP
+        self.alpha_anneal = False
+        self.constraint_buffer = False
+
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
         self.ddp_reward_history = None
         self.last_greedy_solution = None
+        self.constraint_residual = None
+        self.alpha_hist = None
+        self.buffer_hist = None
         self.constraint_violation = None
 
 
@@ -144,15 +155,20 @@ class TaskGraph:
         b = np.zeros(self.num_tasks)
 
         # scipy version
-        # constraint 1
+        # equality flow constraint
+        lb2 = np.zeros(self.num_tasks-2)
+        ub2 = np.zeros(self.num_tasks-2)
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
+
+        # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=b[1:-1], ub=b[1:-1])
-        #c2 = LinearConstraint(self.incidence_mat, lb=b, ub=b)
 
+        # inequality constraint on beginning and ending flow
+        c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
         #import pdb; pdb.set_trace()
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2))
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
 
@@ -234,6 +250,9 @@ class TaskGraph:
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='True'):
+        self.alpha_anneal = alpha_anneal
+        self.constraint_buffer = constraint_buffer
+
         dynamics_func_handle = self.reward_model.get_dynamics_equations()
         dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
                                        # entry i corresponds to the equation for the reward at node i+1
@@ -253,7 +272,6 @@ class TaskGraph:
                   edgelist=self.reward_model.edges,
                   constraint_type=constraint_type,
                   constraint_buffer=constraint_buffer,
-                  alpha_anneal=alpha_anneal,
                   flow_lookahead=flow_lookahead)
 
         self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
@@ -288,21 +306,41 @@ class TaskGraph:
         delta = np.inf
         prev_u_seq = copy(self.last_u_seq)
         reward_history = []
+        constraint_residual = []
         constraint_violations = []
+        alpha_hist = []
+        buffer_hist = []
+
 
         while i < max_iter and delta > threshold:
-            print("new iteration!!!!", i)
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buffer, alpha)
+            #print("new iteration!!!!")
+            #breakpoint()
+            if(self.constraint_buffer == 'True'):
+                buf = buffer - ((buffer * i)/(max_iter-1))
+            else:
+                buf = 0
+
+            if(self.alpha_anneal == 'True'):
+                curr_alpha = (alpha/(i+1)**(1/3))
+
+            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf, curr_alpha)
             #breakpoint()
             #np.set_printoptions(suppress=True)
-            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, alpha)
+
+            print("alpha is: ", curr_alpha)
+            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, curr_alpha)
             print("states: ",self.last_x_seq)
             print("actions: ", self.last_u_seq)
             i += 1
             delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
             print("iteration ", i-1, " delta: ", delta)
             print("reward: ", np.sum(self.last_x_seq))
+
+            # log data
             reward_history.append(np.sum(self.last_x_seq))
+            constraint_residual.append(self.get_constraint_residual(self.last_u_seq))
+            alpha_hist.append(curr_alpha)
+            buffer_hist.append(buf)
             prev_u_seq = copy(self.last_u_seq)
             
             #compute constraint violations from last_u_seq
@@ -336,6 +374,9 @@ class TaskGraph:
         self.flow = self.last_u_seq
         self.last_ddp_solution = self.last_u_seq
         self.ddp_reward_history = reward_history
+        self.constraint_residual = constraint_residual
+        self.alpha_hist = alpha_hist
+        self.buffer_hist = buffer_hist
         self.constraint_violation = constraint_violations
 
     def solveGraph(self):
@@ -356,6 +397,32 @@ class TaskGraph:
         """
         # note that this function uses reward_model - the real-world model of the system - rather than the estimate
         self.reward = self.reward_model._nodewise_optim_cost_function(self.flow, eval=True)
+
+    def time_task_execution(self, flow):
+        frontier_nodes = []
+        task_start_times = np.zeros((self.num_tasks,))
+        task_finish_times = np.zeros((self.num_tasks,))
+
+        nodelist = list(range(self.num_tasks))
+        frontier_nodes.append(nodelist[0])
+        while len(frontier_nodes) > 0:
+            current_node = frontier_nodes.pop(0)
+            incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
+            print(current_node)
+            print(frontier_nodes)
+            print(incoming_edges)
+            #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
+            if len(incoming_edges) > 0:
+                #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
+                task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)]) # TODO condition on flow coming from that node
+            else:
+                task_start_times[current_node] = 0
+            task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
+            for n in self.task_graph.neighbors(current_node):
+                frontier_nodes.append(n)
+
+        return task_start_times, task_finish_times
+
 
 
 
@@ -452,6 +519,18 @@ class TaskGraph:
         # JUST RANDOM SAMPLE FOR NOW BC I DON'T WANT TO WASTE MORE TIME ON THIS
 
         return candidate_points
+
+    def get_constraint_residual(self, u_seq):
+        incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to inflow to node i+1
+        outgoing_u_seq = self.ddp.u_seq_to_outgoing_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to outflow from node i
+        residuals = []
+        for i in range(1,len(incoming_u_seq)):
+            incoming_f = np.sum(incoming_u_seq[i-1])
+            outgoing_f = np.sum(outgoing_u_seq[i])
+            residuals.append(outgoing_f-incoming_f)
+        return np.linalg.norm(np.array(residuals))
+
+
 
 def discretize_pairwise(max_val):
     """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""

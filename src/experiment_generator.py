@@ -66,15 +66,11 @@ class ExperimentGenerator():
             plt.savefig(graph_img_file.absolute())
 
             start = time.time()
-            #solve baseline
-            task_graph.solve_graph_scipy()
-            baseline_fin_time = time.time()
-            baseline_elapsed_time = baseline_fin_time-start
 
             #solve greedy
             task_graph.solve_graph_greedy()
             greedy_fin_time = time.time()
-            greedy_elapsed_time = greedy_fin_time-baseline_fin_time
+            greedy_elapsed_time = greedy_fin_time-start
 
             #solve with ddp
             task_graph.initialize_solver_ddp(**trial_args['ddp'])
@@ -82,28 +78,50 @@ class ExperimentGenerator():
             ddp_fin_time = time.time()
             ddp_elapsed_time = ddp_fin_time-greedy_fin_time
 
-            ddp_reward_hist_img_file = trial_dir / "ddp_reward_history.jpg"
-            plt.clf() # clear plot before graphing reward history
-            plt.plot(task_graph.ddp_reward_history)
-            plt.xlabel('Iteration #')
-            plt.ylabel('Reward')
-            plt.savefig(ddp_reward_hist_img_file.absolute())
+             #solve baseline
+            task_graph.solve_graph_scipy()
+            baseline_fin_time = time.time()
+            baseline_elapsed_time = baseline_fin_time-ddp_fin_time
 
+
+            ddp_data = trial_dir / "ddp_data.jpg"
+            fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
+            axs[0].plot(task_graph.ddp_reward_history)
+            axs[0].set_ylabel('Reward')
+
+            axs[1].plot(task_graph.constraint_residual)
+            axs[1].set_ylabel('Constraint Residual Norm')
+
+            axs[2].plot(task_graph.alpha_hist)
+            axs[2].set_ylabel('Alpha value')
+
+            axs[3].plot(task_graph.buffer_hist)
+            axs[3].set_ylabel('Buffer value')
+
+            fig.text(0.5, 0.04, 'Iteration #', ha='center')
+            plt.savefig(ddp_data.absolute())
+
+            plt.clf()   # clear plot for next iteration
 
             #log results
             trial_arg_list.append(trial_args)
             results_dict = {}
-            results_dict['baseline_reward'] = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
+            results_dict['baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
+            results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
-            results_dict['greedy_reward'] = task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
+            results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
             results_dict['greedy_solution'] = task_graph.last_greedy_solution
             results_dict['greedy_solution_time'] = greedy_elapsed_time
+            results_dict['greedy_execution_times'] = task_graph.time_task_execution(task_graph.last_greedy_solution)
 
-            results_dict['ddp_reward'] = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
+
+            results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
             results_dict['ddp_solution'] = task_graph.last_ddp_solution
             results_dict['ddp_solution_time'] = ddp_elapsed_time
+            results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
+
 
             results_dict_list.append(results_dict)
 
@@ -203,19 +221,36 @@ class ExperimentGenerator():
         taskgraph_args_exp['coalition_types'] = ['polynomial' for _ in range(trial_num_nodes)]
 
         # sample corresponding parameters within some defined range to the types in the above list
-        taskgraph_args_exp['coalition_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(trial_num_nodes)]
+        #taskgraph_args_exp['coalition_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(trial_num_nodes)]
+        coalition_params = []
+        for _ in range(trial_num_nodes):
+            c = 0.0
+            b = np.random.uniform(0,3)
+            a = np.random.uniform(-b,3)
+            coalition_params.append([c,b,a])
 
+        taskgraph_args_exp['coalition_params'] = coalition_params
         # sample from dependency types available -- list of strings
         taskgraph_args_exp['dependency_types'] = ['polynomial' for _ in range(num_edges)]
 
         # sample corresponding parameters within some defined range to the types in the above list
-        taskgraph_args_exp['dependency_params'] = [list(np.random.uniform(-.2,.2,(3,))) for _ in range(num_edges)]
-
+        #taskgraph_args_exp['dependency_params'] = [list(np.random.uniform(-.2,.2,(3,))) for _ in range(num_edges)]
+        dependency_params = []
+        for _ in range(num_edges):
+            c = np.random.uniform(-0.2,0.2)
+            b = np.random.uniform(0,3)
+            a = np.random.uniform(-b,3)
+            dependency_params.append([c,b,a])
+        taskgraph_args_exp['dependency_params'] = dependency_params
         # sample from available agg types -- probably all sum for now???
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
         taskgraph_args['exp'] = taskgraph_args_exp
-        taskgraph_args['ddp'] = {'constraint_type': 'qp'}
+        taskgraph_args['ddp'] = {'constraint_type': 'qp',
+                                 'constraint_buffer': 'soft', #None or 'soft' or 'hard'
+                                 'alpha_anneal': 'True', #'True' or 'False'
+                                 'flow_lookahead': 'False' #'True' or 'False'
+                                 }
 
         return taskgraph_args, nx_task_graph, node_pos
 
