@@ -249,7 +249,7 @@ class TaskGraph:
             num_assigned_edges += num_edges
 
 
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='True'):
+    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
         self.alpha_anneal = alpha_anneal
         self.constraint_buffer = constraint_buffer
 

@@ -55,12 +55,6 @@ def generate_tower(initial_width, num_layers):
         layer_blocks.append(choose_block_widths(layer_widths[-1]))
     return layer_widths, layer_heights, block_widths_to_ranges(layer_blocks)
 
-widths, heights, blocks = generate_tower(400, 3)
-print(widths)
-print(heights)
-print(blocks)
-
-
 def generate_graph_from_block_info(block_info):
     #list of tuples: (supporting block, supported block)
     edges = []
@@ -105,11 +99,6 @@ def generate_graph_from_block_info(block_info):
 
     return list(nodes), edges, contact_edges, interlayer_edges, len(block_info)
 
-tower_nodes, tower_edges, tower_contact_edges, tower_interlayer_edges, n_layers = generate_graph_from_block_info(blocks)
-G = nx.DiGraph()
-G.add_nodes_from(tower_nodes)
-G.add_edges_from(tower_edges)
-
 def plot_tower_graph(Gr, num_layers, tower_edges, tower_contact_edges, tower_interlayer_edges, save, filename):
     myposdict = {}
     for node in Gr.nodes():
@@ -128,7 +117,7 @@ def plot_tower_graph(Gr, num_layers, tower_edges, tower_contact_edges, tower_int
     nx.draw_networkx_edges(Gr, pos, edgelist=tower_contact_edges, arrowstyle="->", edge_color="red", arrowsize=10)
 
     if save:
-        plt.savefig("./generated_examples/"+filename+"_graph.png")
+        plt.savefig("./autonomous_construction/generated_examples/"+filename+"_graph.png")
     else:
         plt.show()
 
@@ -197,7 +186,7 @@ def draw_tower(layer_heights, block_info, mass_arr, draw):
         pygame.quit()
 
 
-def export_toml_file(G, draw, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename):
+def export_toml_files(G, draw, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename):
     masses = []
     draw_tower(heights, blocks, masses, draw)
     print(masses)
@@ -221,7 +210,7 @@ def export_toml_file(G, draw, heights, blocks, tower_contact_edges, tower_interl
     coalition_types = ['null'] + (len(nodelist)-2)*['sigmoid'] + ['polynomial']
     coalition_params = [[0,0,0]]
     for m in masses:
-        coalition_params.append([20*m,20.0,m])
+        coalition_params.append([100*m,10.0,m])
     coalition_params.append([0.0,1.0,0.0])
 
     dependency_types = len(edgelist)*['polynomial']
@@ -229,11 +218,11 @@ def export_toml_file(G, draw, heights, blocks, tower_contact_edges, tower_interl
     dependency_params = []
     for e in edgelist:
         if e in contact_edgelist:
-            dependency_params.append([0.0, 2.0, 0.0])
+            dependency_params.append([0.0, 0.0, 0.0])
         elif e in interlayer_edgelist:
             dependency_params.append([0.0, 0.0, 0.0])
         else:
-            dependency_params.append([0.0, 1.0, 0.0])
+            dependency_params.append([0.0, 0.0, 0.0])
 
     aggs = len(nodelist)*["or"]
 
@@ -251,10 +240,14 @@ def export_toml_file(G, draw, heights, blocks, tower_contact_edges, tower_interl
         },
         'ddp': {
             'constraint_type': 'qp'
+        },
+        'tower': {
+            'heights': heights,
+            'blocks': blocks
         }
     }
 
-    f = open("./generated_examples/"+filename+".toml", 'w+')
+    f = open("./autonomous_construction/generated_examples/"+filename+".toml", 'w+')
     toml.dump(toml_dict, f)
 
 def generate_full_example_data(initial_width, num_layers, filename):
@@ -264,7 +257,7 @@ def generate_full_example_data(initial_width, num_layers, filename):
     G.add_nodes_from(tower_nodes)
     G.add_edges_from(tower_edges)
     plot_tower_graph(G, n_layers, tower_edges, tower_contact_edges, tower_interlayer_edges, True, filename)
-    export_toml_file(G, True, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename)
+    export_toml_files(G, True, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename)
 
 def main():
     if(len(sys.argv) != 4):

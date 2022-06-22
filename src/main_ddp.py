@@ -4,6 +4,7 @@ from taskgraph import TaskGraph
 from log_data import LogData
 import toml
 import argparse
+from draw_construction import graph_tower, flows_to_taskrobots
 
 # NP main program
 def main():
@@ -26,14 +27,24 @@ def main():
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
     s,f = task_graph.time_task_execution(task_graph.last_ddp_solution)
+    heights = []
+    blocks = []
+
     print('task start times: ', s)
     print('task finish times: ', f)
     print('task durations: ', task_graph.task_times)
 
+    if("tower" in track_args):
+        heights = track_args["tower"]["heights"]
+        blocks = track_args["tower"]["blocks"]
+        totrobots = 20
+        taskrobots = flows_to_taskrobots(task_graph.last_ddp_solution, track_args['exp']["edges"], track_args['exp']["num_tasks"], totrobots)
+        graph_tower(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'])
+
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)
     ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
-    optimal_reward = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
+    #optimal_reward = task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
     print('DDP solution reward: ', ddp_reward)
     #print('Optimal solution reward: ', optimal_reward)
 
