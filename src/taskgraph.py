@@ -3,6 +3,7 @@ from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
 from scipy.optimize import minimize, LinearConstraint
+import cyipopt
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -547,12 +548,12 @@ class TaskGraph:
 
     def test_minlp(self):
 
-        case_a = False
-        case_b = True
+        case_a = True
+        case_b = False
         if case_a:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             o_akk = np.zeros((self.num_robots,self.num_tasks+1, self.num_tasks),)
-            z_ak = np.zeros((self.num_tasks*self.num_robots,))
+            z_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
 
@@ -572,10 +573,37 @@ class TaskGraph:
             x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
 
+            lb = [0.0 for _ in range(len(x_vec))]
+            ub_xoz = [1.0 for _ in range(len(x_ak) + len(o_akk.flatten()) + len(z_ak))]
+            ub_sf = [100 for _ in range(len(s_k)+len(f_k))]
+            ub = ub_xoz + ub_sf
+
+
+            curr_n_constraints = self.num_robots* (1 + self.num_tasks + (self.num_tasks+1))
+            cl = [0.0 for _ in range(curr_n_constraints)]
+            cu = cl
+
+            #breakpoint() #NOTE: currently seems to barely move, staying near initial condition
+            x0 = x_vec*0.5
+            nlp = cyipopt.problem(
+                n=len(x_vec),
+                m=curr_n_constraints,
+                problem_obj=self.minlp_obj,
+                lb=lb,
+                ub=ub,
+                cl=cl,
+                cu=cu
+            )
+            nlp.addOption('max_iter', 10000)
+            nlp.addOption('print_level', 8)
+            x, info = nlp.solve(x0)
+            self.translate_minlp_objective(x)
+            breakpoint()
+
         if case_b:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             o_akk = np.zeros((self.num_robots,self.num_tasks+1, self.num_tasks),)
-            z_ak = np.zeros((self.num_tasks*self.num_robots,))
+            z_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             s_k = 2*np.arange(self.num_tasks)
             f_k = s_k+1
 
@@ -608,6 +636,28 @@ class TaskGraph:
             x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
         import pdb; pdb.set_trace()
+
+    def translate_minlp_objective(self, x):
+        x_ak, o_akk, z_ak, s_k, f_k = self.minlp_obj.partition_x(x)
+        # x_ak organized by agent
+        x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
+        x_dummy = x_ak[:,0]
+        x_ak = x_ak[:,1:]
+        task_coalitions = []#np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
+        for t in range(self.num_tasks):
+            task_coalitions.append(np.sum(x_ak[:,t]))
+        print("task coalitions: ",task_coalitions)
+        o_akk = np.atleast_3d(np.reshape(o_akk,(self.num_robots,self.num_tasks+1, self.num_tasks)))
+        breakpoint()
+        for a in range(self.num_robots):
+            for j in range(self.num_tasks+1):
+                for k in range(self.num_tasks):
+                    if(o_akk[a,j,k]>0.99):
+                        print("agent %d performs task %d before task %d" %(a,j,k))
+
+        tasks_ordered = np.argsort(np.array(f_k))
+        for t in tasks_ordered:
+            print("Time ", f_k[t],": task %d assigned %d agents" % (t, task_coalitions[t]))
 
 
 def discretize_pairwise(max_val):

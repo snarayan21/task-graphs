@@ -1,5 +1,5 @@
 import cyipopt
-import numpy as np
+import autograd.numpy as np
 from autograd import grad, jacobian
 import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 
@@ -23,6 +23,7 @@ class MRTA_XD():
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
             self.in_nbrs.append([n for n in self.task_graph.predecessors(curr_node)])
+        self.jacobian_handle = jacobian(self.constraints)
 
     def objective(self, x):
         """Returns the scalar value of the objective given x."""
@@ -31,21 +32,25 @@ class MRTA_XD():
         x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
         x_dummy = x_ak[:,0]
         x_ak = x_ak[:,1:]
-        task_coalitions = np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
-        task_coalition_rewards = np.zeros((self.num_tasks,))
+        task_coalitions = []#np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
+        task_coalition_rewards = [] # np.zeros((self.num_tasks,))
         for t in range(self.num_tasks):
-            task_coalitions[t] = np.sum(x_ak[:,t])/self.num_robots
-            task_coalition_rewards[t] = self.reward_model._compute_node_coalition(t,task_coalitions[t])
+            try:
+                task_coalitions.append(np.sum(x_ak[:,t])/self.num_robots)
+            except(ValueError):
+                breakpoint()
+            task_coalition_rewards.append(self.reward_model._compute_node_coalition(t,task_coalitions[t]))
 
 
         tasks_ordered = np.argsort(np.array(f_k))
-        task_rewards = np.zeros((self.num_tasks,))
+        task_rewards = [] # np.zeros((self.num_tasks,))
         for t in tasks_ordered:
             task_reward, _ = self.reward_model.compute_node_reward_dist(t,task_coalition_rewards[t],[task_rewards[k] for k in self.in_nbrs[t]], np.zeros_like(task_rewards))
-            task_rewards[t] = task_reward
+            task_rewards.append(task_reward)
 
-        print('task coalitions: ', task_coalitions)
-        print('task_rewards: ', task_rewards)
+        #print('task coalitions: ', task_coalitions)
+        #print('task_rewards: ', task_rewards)
+        #print(x)
 
         return np.sum(task_rewards)
 
@@ -59,43 +64,39 @@ class MRTA_XD():
         # ])
         if self.gradient_func == None:
             self.gradient_func = grad(self.objective)
+        #print(np.array(self.gradient_func(x)))
         return np.array(self.gradient_func(x))
 
     def constraints(self, x):
         """Returns the constraints."""
         x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
         x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
-        x_dummy = x_ak[:,0]
-        x_ak = x_ak[:,1:]
+        z_ak = np.reshape(np.array(z_ak),(self.num_robots, self.num_tasks + 1))
 
         # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
         # index 0 in dimension 2 is for the dummy tasks. duplicates not included for dummy tasks, but included for all others
-        o_akk = np.reshape(np.array(o_akk), (self.num_robots, self.num_tasks+1, self.num_tasks-1))
-
+        o_akk = np.reshape(np.array(o_akk), (self.num_robots, self.num_tasks+1, self.num_tasks))
 
         constraints = []
 
         # constraint a: every agent starts with one dummy task -- equal to 1
         for a in range(self.num_robots):
-            constraints.append(x_dummy[a])
+            constraints.append(x_ak[a,0] - 1)
 
         # constraint d: every task an agent performs has exactly one predecessor
         for a in range(self.num_robots):
             for k_p in range(self.num_tasks):
-                constraints.append(np.sum(o_akk[a,:,k_p])-x_ak[a,k_p])
-
+                constraints.append(np.sum(o_akk[a,:,k_p])-x_ak[a,k_p+1])
         # constraint e: every task an agent performs has exactly one successor except the last task
         for a in range(self.num_robots):
             for k in range(self.num_tasks+1): #K_a+
-                constraints.append(np.sum(o_akk[a,k,:]) + z_ak[a,k] - x[a,k])
+                constraints.append(np.sum(o_akk[a,k,:]) + z_ak[a,k] - x_ak[a,k])
 
-
-
-        return np.array((np.prod(x), np.dot(x, x)))
+        return np.array(constraints)
 
     def jacobian(self, x):
         """Returns the Jacobian of the constraints with respect to x."""
-        return np.concatenate((np.prod(x)/x, 2*x))
+        return np.array(self.jacobian_handle(x))
 
     # def hessianstructure(self):
     #     """Returns the row and column indices for non-zero vales of the
@@ -136,12 +137,12 @@ class MRTA_XD():
 
         msg = "Objective value at iteration #{:d} is - {:g}"
 
-        print(msg.format(iter_count, obj_value))
+        print(msg.format(iter_count, obj_value), "\n", )
 
     def partition_x(self, x):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
         o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
-        z_len = self.num_tasks*self.num_robots #each agent can finish on each task
+        z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
         s_len = self.num_tasks
         f_len = self.num_tasks
         x_ak = x[0:x_len]
