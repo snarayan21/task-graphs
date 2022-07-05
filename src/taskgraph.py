@@ -13,7 +13,7 @@ from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
-from minlp import MRTA_XD
+from scipt_minlp import MRTA_XD
 
 from autograd import grad
 
@@ -572,7 +572,9 @@ class TaskGraph:
 
             x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             self.minlp_obj.objective(x_vec)
-
+            self.minlp_obj.model.optimize()
+            print(self.minlp_obj.model.getObjVal())
+            breakpoint()
             lb = [0.0 for _ in range(len(x_vec))]
             ub_xoz = [1.0 for _ in range(len(x_ak) + len(o_akk.flatten()) + len(z_ak))]
             ub_sf = [100 for _ in range(len(s_k)+len(f_k))]

@@ -1,6 +1,7 @@
 import cyipopt
 from pyscipopt import Model, exp, quicksum
 import autograd.numpy as np
+from networkx import topological_sort
 from autograd import grad, jacobian
 import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 
@@ -24,7 +25,19 @@ class MRTA_XD():
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
             self.in_nbrs.append([n for n in self.task_graph.predecessors(curr_node)])
+
+        self.in_edge_inds = []
+        self.influence_func_handles = []
+        for t in range(self.num_tasks):
+            in_edges_t = list(self.task_graph.in_edges(t))
+            in_edges_t_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges_t]
+            self.in_edge_inds.append(in_edges_t_inds)
+            influence_handles_t = [getattr(self, self.reward_model.dependency_types[edge_i]) for edge_i in in_edges_t_inds]
+            self.influence_func_handles.append(influence_handles_t)
+
         #self.jacobian_handle = jacobian(self.constraints)
+
+        self.node_order = list(topological_sort(task_graph))
 
         self.model = Model("MRTA_XD")
         self.add_variables() # keep variables as lists, but use indexing array
@@ -66,11 +79,22 @@ class MRTA_XD():
             task_coalitions.append(np.sum([self.x_ak[ind_x_ak[a,t]] for a in range(self.num_robots)])/self.num_robots)
             # the below is just a polynonial or exponential function of the coalition. Can write it explicitly as a separate function in here and then call it
             task_coalition_rewards.append(self.get_coalition(t,task_coalitions[t]))
-        print(task_coalitions)
-        print(task_coalition_rewards)
+        print("coalitions: ", task_coalitions)
+        print("coalition func rewards: ",task_coalition_rewards)
+
+        task_influence_rewards = [None for _ in range(self.num_tasks)]
+        task_influnce_agg = [None for _ in range(self.num_tasks)]
+        task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
+        print(self.influence_func_handles)
+        print(self.in_nbrs)
+        for t in self.node_order:
+            task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
+            task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
+            task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+        print("overall rewards: ", task_rewards)
+
         """
-        tasks_ordered = np.argsort(np.array(f_k))
-        task_rewards = [] # np.zeros((self.num_tasks,))
+
         for t in tasks_ordered:
             task_reward, _ = self.reward_model.compute_node_reward_dist(t,task_coalition_rewards[t],[task_rewards[k] for k in self.in_nbrs[t]], np.zeros_like(task_rewards))
             task_rewards.append(task_reward)
@@ -79,7 +103,7 @@ class MRTA_XD():
         #print('task_rewards: ', task_rewards)
         #print(x)
 
-        #return np.sum(task_rewards)
+        return quicksum(task_rewards)
 
     def gradient(self, x):
         """Returns the gradient of the objective with respect to x."""
@@ -141,7 +165,7 @@ class MRTA_XD():
 
     def get_coalition(self, node_i, f):
 
-        coalition_function = getattr(self.reward_model, self.reward_model.coalition_types[node_i])
+        coalition_function = getattr(self, self.reward_model.coalition_types[node_i])
         #breakpoint()
         return coalition_function(f, param=self.reward_model.coalition_params[node_i])
 
@@ -150,38 +174,16 @@ class MRTA_XD():
         return param[0] / (1 + exp(-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
-        return param[0] - param[2] * np.exp(-1 * param[1] * flow)
+        return param[0] - param[2] * exp(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 
     def polynomial(self, flow, param):
         val = quicksum([float(param[i])*flow**i for i in range(len(param))])
         return val
 
-#
-# lb = [1.0, 1.0, 1.0, 1.0]
-# ub = [5.0, 5.0, 5.0, 5.0]
-#
-# cl = [25.0, 40.0]
-# cu = [2.0e19, 40.0]
-#
-# x0 = [1.0, 5.0, 5.0, 1.0]
-#
-#
-#
-#
-# nlp = cyipopt.problem(
-#    n=len(x0),
-#    m=len(cl),
-#    problem_obj=MRTA_XD(),
-#    lb=lb,
-#    ub=ub,
-#    cl=cl,
-#    cu=cu,
-# )
-# prob_obj = MRTA_XD()
-# #breakpoint()
-# nlp.addOption('mu_strategy', 'adaptive')
-# nlp.addOption('tol', 1e-7)
-#
-# x, info = nlp.solve(x0)
-# print(x)
+    def influence_agg_and(self, deltas):
+        return np.prod(np.array(deltas))
+
+    def influence_agg_or(self, deltas):
+        #print('or ', deltas, np.sum(np.array(deltas)))
+        return np.sum(np.array(deltas))
