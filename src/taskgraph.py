@@ -571,9 +571,15 @@ class TaskGraph:
             print(x_ak, o_akk, z_ak, s_k, f_k)
 
             x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
-            self.minlp_obj.objective(x_vec)
+            #self.minlp_obj.objective(x_vec)
             self.minlp_obj.model.optimize()
             print(self.minlp_obj.model.getObjVal())
+            print("x_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))])
+            print("o_akk:", [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))])
+            print("z_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.z_ak[i]) for i in range(len(self.minlp_obj.z_ak))])
+            print("s_k:", [self.minlp_obj.model.getVal(self.minlp_obj.s_k[i]) for i in range(len(self.minlp_obj.s_k))])
+            print("f_k:", [self.minlp_obj.model.getVal(self.minlp_obj.f_k[i]) for i in range(len(self.minlp_obj.f_k))])
+
             breakpoint()
             lb = [0.0 for _ in range(len(x_vec))]
             ub_xoz = [1.0 for _ in range(len(x_ak) + len(o_akk.flatten()) + len(z_ak))]

@@ -41,7 +41,9 @@ class MRTA_XD():
 
         self.model = Model("MRTA_XD")
         self.add_variables() # keep variables as lists, but use indexing array
-        #self.model.setObjective(self.objective)
+        z = self.model.addVar("z")
+        self.model.addCons(z >= self.objective())
+        self.model.setObjective(z, sense='maximize')
 
         #self.set_constraints()
 
@@ -66,10 +68,10 @@ class MRTA_XD():
         self.ind_z_ak = np.reshape(np.arange(z_len), (self.num_robots, self.num_tasks + 1))
 
 
-    def objective(self, x):
+    def objective(self):#, x):
         #may have to make the member variables argument variables instead, so the objective func takes in arguments
         """Returns the scalar value of the objective given x."""
-        self.x_ak, self.o_akk, self.z_ak, self.s_k, self.f_k = self.partition_x(x) #uncomment for testing with values
+        #self.x_ak, self.o_akk, self.z_ak, self.s_k, self.f_k = self.partition_x(x) #uncomment for testing with values
         # x_ak organized by agent
         ind_x_dummy = self.ind_x_ak[:,0]
         ind_x_ak = self.ind_x_ak[:,1:]
