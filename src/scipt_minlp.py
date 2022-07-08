@@ -20,7 +20,6 @@ class MRTA_XD():
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
         self.reward_model = reward_model # need this for the reward model agg functions
-        self.gradient_func = None
         self.task_graph = task_graph
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
@@ -42,10 +41,10 @@ class MRTA_XD():
         self.model = Model("MRTA_XD")
         self.add_variables() # keep variables as lists, but use indexing array
         z = self.model.addVar("z")
-        self.model.addCons(z >= self.objective())
+        self.set_constraints()
+        self.model.addCons(z <= self.objective())
         self.model.setObjective(z, sense='maximize')
 
-        #self.set_constraints()
 
     def add_variables(self):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -55,11 +54,11 @@ class MRTA_XD():
         f_len = self.num_tasks
         time_ub = 1000 #set this to something sensible at some point
         # add x_ak vars
-        self.x_ak = [self.model.addVar("", vtype="B") for _ in range(x_len)] #add binary variables for x_ak
-        self.o_akk = [self.model.addVar("", vtype="B") for _ in range(o_len)] #add binary variables for o_akk
-        self.z_ak = [self.model.addVar("",vtype="B") for _ in range(z_len)] #add binary variables for z_ak
-        self.s_k = [self.model.addVar("", vtype="C", lb=0, ub=1000) for _ in range(s_len)] # add continuous vars for s_k
-        self.f_k = [self.model.addVar("", vtype="C", lb=0, ub=1000) for _ in range(f_len)] # add continuous vars for f_k
+        self.x_ak = [self.model.addVar("x_%d"%i, vtype="B") for i in range(x_len)] #add binary variables for x_ak
+        self.o_akk = [self.model.addVar("o_%d"%i, vtype="B") for i in range(o_len)] #add binary variables for o_akk
+        self.z_ak = [self.model.addVar("z_%d"%i,vtype="B") for i in range(z_len)] #add binary variables for z_ak
+        self.s_k = [self.model.addVar("s_%d"%i, vtype="C", lb=0, ub=1000) for i in range(s_len)] # add continuous vars for s_k
+        self.f_k = [self.model.addVar("f_%d"%i, vtype="C", lb=0, ub=1000) for i in range(f_len)] # add continuous vars for f_k
 
         self.ind_x_ak = np.reshape(np.arange(x_len), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a))
         self.ind_o_akk = np.reshape(np.arange(o_len), (self.num_robots, self.num_tasks+1, self.num_tasks))
@@ -81,19 +80,19 @@ class MRTA_XD():
             task_coalitions.append(np.sum([self.x_ak[ind_x_ak[a,t]] for a in range(self.num_robots)])/self.num_robots)
             # the below is just a polynonial or exponential function of the coalition. Can write it explicitly as a separate function in here and then call it
             task_coalition_rewards.append(self.get_coalition(t,task_coalitions[t]))
-        print("coalitions: ", task_coalitions)
-        print("coalition func rewards: ",task_coalition_rewards)
+        #print("coalitions: ", task_coalitions)
+        #print("coalition func rewards: ",task_coalition_rewards)
 
         task_influence_rewards = [None for _ in range(self.num_tasks)]
         task_influnce_agg = [None for _ in range(self.num_tasks)]
         task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
-        print(self.influence_func_handles)
-        print(self.in_nbrs)
+        #print(self.influence_func_handles)
+        #print(self.in_nbrs)
         for t in self.node_order:
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
             task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
-        print("overall rewards: ", task_rewards)
+        #print("overall rewards: ", task_rewards)
 
         """
 
@@ -107,30 +106,37 @@ class MRTA_XD():
 
         return quicksum(task_rewards)
 
-    def gradient(self, x):
-        """Returns the gradient of the objective with respect to x."""
-        # return np.array([
-        #     x[0]*x[3] + x[3]*np.sum(x[0:3]),
-        #     x[0]*x[3],
-        #     x[0]*x[3] + 1.0,
-        #     x[0]*np.sum(x[0:3])
-        # ])
-        if self.gradient_func == None:
-            self.gradient_func = grad(self.objective)
-        #print(np.array(self.gradient_func(x)))
-        return np.array(self.gradient_func(x))
 
-    def set_constraints(self, x):
-        """Returns the constraints."""
-        x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
-        x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
-        z_ak = np.reshape(np.array(z_ak), (self.num_robots, self.num_tasks + 1))
+    def set_constraints(self):
+        """adds the constraints to the model"""
 
-        # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
-        # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
-        o_akk = np.reshape(np.array(o_akk), (self.num_robots, self.num_tasks+1, self.num_tasks))
+        # constraint a: every agent starts with one dummy task -- equal to 1
+        for a in range(self.num_robots):
+            cons_ind = self.ind_x_ak[a,0]
+            self.model.addCons(self.x_ak[cons_ind] == 1)
+        #self.model.addCons(quicksum([self.o_akk[i] for i in range(len(self.o_akk))])==0)
+        #self.model.addCons(quicksum([self.s_k[i] for i in range(len(self.s_k))])==0)
+        #self.model.addCons(quicksum([self.f_k[i] for i in range(len(self.f_k))])==0)
+        #self.model.addCons(quicksum([self.z_ak[i] for i in range(len(self.z_ak))])==0)
+        #self.model.addCons(self.o_akk[0] + self.o_akk[5]+ self.o_akk[10]+ self.o_akk[15]+ self.o_akk[20]+ self.o_akk[25] == 0)
 
-        constraints = []
+        # constraint d: every task an agent performs has exactly one predecessor
+        for a in range(self.num_robots):
+            for k_p in range(self.num_tasks):
+                cons_inds = self.ind_o_akk[a,:,k_p]
+                var_list = [self.o_akk[ind] for ind in cons_inds]
+                print([self.o_akk[ind] for ind in cons_inds])
+                print(self.x_ak[self.ind_x_ak[a,k_p+1]])
+                self.model.addCons(quicksum(var_list) - self.x_ak[self.ind_x_ak[a,k_p+1]] == 0)
+
+        # constraint e: every task an agent performs has exactly one successor except for the last task
+        # (including the dummy tasks
+        for a in range(self.num_robots):
+            for k in range(self.num_tasks+1):
+                cons_inds = self.ind_o_akk[a,k,:]
+                var_list = [self.o_akk[ind] for ind in cons_inds]
+                self.model.addCons(quicksum(var_list) + self.z_ak[self.ind_z_ak[a,k]] - self.x_ak[self.ind_x_ak[a,k]] == 0)
+        """
 
         # constraint a: every agent starts with one dummy task -- equal to 1
         for a in range(self.num_robots):
@@ -146,7 +152,7 @@ class MRTA_XD():
                 constraints.append(np.sum(o_akk[a,k,:]) + z_ak[a,k] - x_ak[a,k])
 
         return np.array(constraints)
-
+        """
     def jacobian(self, x):
         """Returns the Jacobian of the constraints with respect to x."""
         return np.array(self.jacobian_handle(x))
