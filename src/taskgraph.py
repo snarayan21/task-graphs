@@ -580,13 +580,13 @@ class TaskGraph:
             print(self.minlp_obj.model.getObjVal())
             print("x_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))])
             oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
-            print("o_akk:", oakk_list)
+            oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
+            print("o_akk:", oakk_np)
             print("z_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.z_ak[i]) for i in range(len(self.minlp_obj.z_ak))])
             print("s_k:", [self.minlp_obj.model.getVal(self.minlp_obj.s_k[i]) for i in range(len(self.minlp_obj.s_k))])
             print("f_k:", [self.minlp_obj.model.getVal(self.minlp_obj.f_k[i]) for i in range(len(self.minlp_obj.f_k))])
             # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
             # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
-            oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
             for a in range(self.num_robots):
                 for k in range(self.num_tasks):
                     for k_p in range(self.num_tasks):

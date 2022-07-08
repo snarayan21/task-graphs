@@ -136,6 +136,28 @@ class MRTA_XD():
                 cons_inds = self.ind_o_akk[a,k,:]
                 var_list = [self.o_akk[ind] for ind in cons_inds]
                 self.model.addCons(quicksum(var_list) + self.z_ak[self.ind_z_ak[a,k]] - self.x_ak[self.ind_x_ak[a,k]] == 0)
+
+        # constraint f: each robot has exactly one final task
+        # TODO is it necessary to mulyiply by x_ak here??
+        for a in range(self.num_robots):
+            var_prod_list = [self.x_ak[self.ind_x_ak[a,k]]*self.z_ak[self.ind_z_ak[a,k]] for k in range(self.num_tasks+1)]
+            self.model.addCons(quicksum(var_prod_list) == 1)
+
+        # constraint g: eliminate self edges
+        for a in range(self.num_robots):
+            for k in range(self.num_tasks):
+                self.model.addCons(self.o_akk[self.ind_o_akk[a,k+1,k]]==0)
+
+        # PRECEDENCE CONSTRAINTS -- constraint h -- ignoring travel time right now
+        for a in range(self.num_robots):
+            for k_p in range(len(self.in_nbrs)):
+                for k in self.in_nbrs[k_p]:
+                    var = self.o_akk[self.ind_o_akk[a,k+1,k_p]]
+                    self.model.addCons(var*(self.s_k[k_p]-self.f_k[k]) >= 0)
+
+        # DURATION CONSTRAINTS (with duration of 1 right now) -- constraint i
+        for k in range(self.num_tasks):
+            self.model.addCons(self.f_k[k] >= self.s_k[k] + 1)
         """
 
         # constraint a: every agent starts with one dummy task -- equal to 1
