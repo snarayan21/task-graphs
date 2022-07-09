@@ -548,8 +548,8 @@ class TaskGraph:
 
     def test_minlp(self):
 
-        case_a = True
-        case_b = False
+        case_a = False
+        case_b = True
         if case_a:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
             o_akk = np.zeros((self.num_robots,self.num_tasks+1, self.num_tasks),)
@@ -570,55 +570,9 @@ class TaskGraph:
 
             print(x_ak, o_akk, z_ak, s_k, f_k)
 
-            x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
+            #x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
             #self.minlp_obj.objective(x_vec)
-            cons = self.minlp_obj.model.getConss()
-            for c in cons:
-                print(c)
-            breakpoint()
-            self.minlp_obj.model.optimize()
-            print(self.minlp_obj.model.getObjVal())
-            print("x_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))])
-            oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
-            oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
-            print("o_akk:", oakk_np)
-            print("z_ak:", [self.minlp_obj.model.getVal(self.minlp_obj.z_ak[i]) for i in range(len(self.minlp_obj.z_ak))])
-            print("s_k:", [self.minlp_obj.model.getVal(self.minlp_obj.s_k[i]) for i in range(len(self.minlp_obj.s_k))])
-            print("f_k:", [self.minlp_obj.model.getVal(self.minlp_obj.f_k[i]) for i in range(len(self.minlp_obj.f_k))])
-            # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
-            # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
-            for a in range(self.num_robots):
-                for k in range(self.num_tasks):
-                    for k_p in range(self.num_tasks):
-                        if oakk_np[a,k+1,k_p] == 1:
-                            print("Agent ", a, " performs task ", k, " and then task ", k_p)
-            breakpoint()
-            lb = [0.0 for _ in range(len(x_vec))]
-            ub_xoz = [1.0 for _ in range(len(x_ak) + len(o_akk.flatten()) + len(z_ak))]
-            ub_sf = [100 for _ in range(len(s_k)+len(f_k))]
-            ub = ub_xoz + ub_sf
 
-
-            curr_n_constraints = self.num_robots* (1 + self.num_tasks + (self.num_tasks+1))
-            cl = [0.0 for _ in range(curr_n_constraints)]
-            cu = cl
-
-            #breakpoint() #NOTE: currently seems to barely move, staying near initial condition
-            x0 = x_vec*0.5
-            nlp = cyipopt.problem(
-                n=len(x_vec),
-                m=curr_n_constraints,
-                problem_obj=self.minlp_obj,
-                lb=lb,
-                ub=ub,
-                cl=cl,
-                cu=cu
-            )
-            nlp.addOption('max_iter', 10000)
-            nlp.addOption('print_level', 8)
-            x, info = nlp.solve(x0)
-            self.translate_minlp_objective(x)
-            breakpoint()
 
         if case_b:
             x_ak = np.zeros(((self.num_tasks+1)*self.num_robots,))
@@ -653,8 +607,36 @@ class TaskGraph:
             o_akk[1,4,4] = 1 # task 3 -> 4
 
             print(x_ak,o_akk,z_ak,s_k,f_k)
-            x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
-            self.minlp_obj.objective(x_vec)
+            #x_vec = np.concatenate((x_ak, o_akk.flatten(), z_ak,s_k,f_k))
+            #self.minlp_obj.objective(x_vec)
+
+        cons = self.minlp_obj.model.getConss()
+        for c in cons:
+            print(c)
+        breakpoint()
+        self.minlp_obj.model.optimize()
+        print(self.minlp_obj.model.getObjVal())
+        xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
+        print("x_ak:", xak_list)
+        oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
+        oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
+        print("o_akk:", oakk_np)
+        zak_list = [self.minlp_obj.model.getVal(self.minlp_obj.z_ak[i]) for i in range(len(self.minlp_obj.z_ak))]
+        print("z_ak:", zak_list)
+        sk_list = [self.minlp_obj.model.getVal(self.minlp_obj.s_k[i]) for i in range(len(self.minlp_obj.s_k))]
+        print("s_k:", sk_list)
+        fk_list = [self.minlp_obj.model.getVal(self.minlp_obj.f_k[i]) for i in range(len(self.minlp_obj.f_k))]
+        print("f_k:", fk_list)
+        # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
+        # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
+        for a in range(self.num_robots):
+            for k in range(self.num_tasks):
+                for k_p in range(self.num_tasks):
+                    if oakk_np[a,k+1,k_p] == 1:
+                        print("Agent ", a, " performs task ", k, " and then task ", k_p)
+        minlp_objective = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
+        self.translate_minlp_objective(minlp_objective)
+        breakpoint()
         import pdb; pdb.set_trace()
 
     def translate_minlp_objective(self, x):
@@ -670,9 +652,9 @@ class TaskGraph:
         o_akk = np.atleast_3d(np.reshape(o_akk,(self.num_robots,self.num_tasks+1, self.num_tasks)))
         breakpoint()
         for a in range(self.num_robots):
-            for j in range(self.num_tasks+1):
+            for j in range(self.num_tasks):
                 for k in range(self.num_tasks):
-                    if(o_akk[a,j,k]>0.99):
+                    if(o_akk[a,j+1,k]>0.99):
                         print("agent %d performs task %d before task %d" %(a,j,k))
 
         tasks_ordered = np.argsort(np.array(f_k))

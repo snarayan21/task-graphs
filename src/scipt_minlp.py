@@ -152,10 +152,17 @@ class MRTA_XD():
         for a in range(self.num_robots):
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
+                    print("Task ", k ," must precede task ", k_p)
+                    self.model.addCons((self.s_k[k_p]-self.f_k[k]) >= 0)
+
+        # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
+        for a in range(self.num_robots):
+            for k_p in range(self.num_tasks):
+                for k in range(self.num_tasks):
                     var = self.o_akk[self.ind_o_akk[a,k+1,k_p]]
                     self.model.addCons(var*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
-        # DURATION CONSTRAINTS (with duration of 1 right now) -- constraint i
+        # DURATION CONSTRAINTS (with duration of 1 right now) -- constraint j
         for k in range(self.num_tasks):
             self.model.addCons(self.f_k[k] >= self.s_k[k] + 1)
         """
