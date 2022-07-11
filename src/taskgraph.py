@@ -71,7 +71,8 @@ class TaskGraph:
             dependency_types=dependency_types,
             influence_agg_func_types=aggs,
             reward_model=self.reward_model,
-            task_graph = self.task_graph
+            task_graph = self.task_graph,
+            task_times = self.task_times
         )
 
         # variables using in the optimization
@@ -88,6 +89,8 @@ class TaskGraph:
         #variables used for data logging
         self.last_baseline_solution = None
         self.last_ddp_solution = None
+        self.last_minlp_solution = None
+        self.last_minlp_solution_val = None
         self.ddp_reward_history = None
         self.last_greedy_solution = None
         self.constraint_residual = None
@@ -164,7 +167,37 @@ class TaskGraph:
         # now for the cost
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
+    def solve_graph_minlp(self):
+        self.minlp_obj.model.optimize()
+        self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
 
+        xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
+        oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
+        oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
+        zak_list = [self.minlp_obj.model.getVal(self.minlp_obj.z_ak[i]) for i in range(len(self.minlp_obj.z_ak))]
+        sk_list = [self.minlp_obj.model.getVal(self.minlp_obj.s_k[i]) for i in range(len(self.minlp_obj.s_k))]
+        fk_list = [self.minlp_obj.model.getVal(self.minlp_obj.f_k[i]) for i in range(len(self.minlp_obj.f_k))]
+
+        verbose = False
+        if verbose:
+            print("MINLP SOLUTION COMPLETE. OBJECTIVE VALUE: ", self.last_minlp_solution_val)
+            print("x_ak:", xak_list)
+            print("o_akk:", oakk_np)
+            print("z_ak:", zak_list)
+            print("s_k:", sk_list)
+            print("f_k:", fk_list)
+
+
+        # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
+        # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
+        for a in range(self.num_robots):
+            for k in range(self.num_tasks):
+                for k_p in range(self.num_tasks):
+                    if oakk_np[a,k+1,k_p] == 1:
+                        if verbose:
+                            print("Agent ", a, " performs task ", k, " and then task ", k_p)
+        self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
+        self.translate_minlp_objective(self.last_minlp_solution)
 
     def solve_graph_scipy(self):
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
@@ -424,13 +457,13 @@ class TaskGraph:
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
-            print(current_node)
-            print(frontier_nodes)
-            print(incoming_edges)
+            #print(current_node)
+            #print(frontier_nodes)
+            #print(incoming_edges)
             #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
             if len(incoming_edges) > 0:
                 #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
-                task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)]) # TODO condition on flow coming from that node
+                task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
@@ -650,7 +683,6 @@ class TaskGraph:
             task_coalitions.append(np.sum(x_ak[:,t]))
         print("task coalitions: ",task_coalitions)
         o_akk = np.atleast_3d(np.reshape(o_akk,(self.num_robots,self.num_tasks+1, self.num_tasks)))
-        breakpoint()
         for a in range(self.num_robots):
             for j in range(self.num_tasks):
                 for k in range(self.num_tasks):
@@ -659,7 +691,7 @@ class TaskGraph:
 
         tasks_ordered = np.argsort(np.array(f_k))
         for t in tasks_ordered:
-            print("Time ", f_k[t],": task %d assigned %d agents" % (t, task_coalitions[t]))
+            print("Time ", f_k[t],": task %d completed by %d agents" % (t, task_coalitions[t]))
 
 
 def discretize_pairwise(max_val):

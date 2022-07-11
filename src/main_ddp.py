@@ -25,6 +25,8 @@ def main():
 
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
+    task_graph.solve_graph_minlp()
+
     s,f = task_graph.time_task_execution(task_graph.last_ddp_solution)
     print('task start times: ', s)
     print('task finish times: ', f)
@@ -35,7 +37,8 @@ def main():
     ddp_reward = task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
     print('DDP solution reward: ', ddp_reward)
 
-    task_graph.test_minlp()
+    print('MINLP solution reward: ')
+    print(task_graph.last_minlp_solution_val)
 
     if args.greedy:
         print('Greedy solution:' )

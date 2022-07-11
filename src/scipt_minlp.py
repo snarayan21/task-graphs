@@ -10,7 +10,7 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, reward_model, task_graph):
+                 dependency_types,influence_agg_func_types, reward_model, task_graph, task_times):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -21,6 +21,7 @@ class MRTA_XD():
         self.influence_agg_func_types = influence_agg_func_types
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
+        self.task_times = task_times
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
             self.in_nbrs.append([n for n in self.task_graph.predecessors(curr_node)])
@@ -57,8 +58,8 @@ class MRTA_XD():
         self.x_ak = [self.model.addVar("x_%d"%i, vtype="B") for i in range(x_len)] #add binary variables for x_ak
         self.o_akk = [self.model.addVar("o_%d"%i, vtype="B") for i in range(o_len)] #add binary variables for o_akk
         self.z_ak = [self.model.addVar("z_%d"%i,vtype="B") for i in range(z_len)] #add binary variables for z_ak
-        self.s_k = [self.model.addVar("s_%d"%i, vtype="C", lb=0, ub=1000) for i in range(s_len)] # add continuous vars for s_k
-        self.f_k = [self.model.addVar("f_%d"%i, vtype="C", lb=0, ub=1000) for i in range(f_len)] # add continuous vars for f_k
+        self.s_k = [self.model.addVar("s_%d"%i, vtype="C", lb=0, ub=time_ub) for i in range(s_len)] # add continuous vars for s_k
+        self.f_k = [self.model.addVar("f_%d"%i, vtype="C", lb=0, ub=time_ub) for i in range(f_len)] # add continuous vars for f_k
 
         self.ind_x_ak = np.reshape(np.arange(x_len), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a))
         self.ind_o_akk = np.reshape(np.arange(o_len), (self.num_robots, self.num_tasks+1, self.num_tasks))
@@ -67,12 +68,10 @@ class MRTA_XD():
         self.ind_z_ak = np.reshape(np.arange(z_len), (self.num_robots, self.num_tasks + 1))
 
 
-    def objective(self):#, x):
-        #may have to make the member variables argument variables instead, so the objective func takes in arguments
+    def objective(self):
         """Returns the scalar value of the objective given x."""
-        #self.x_ak, self.o_akk, self.z_ak, self.s_k, self.f_k = self.partition_x(x) #uncomment for testing with values
+
         # x_ak organized by agent
-        ind_x_dummy = self.ind_x_ak[:,0]
         ind_x_ak = self.ind_x_ak[:,1:]
         task_coalitions = []#np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
         task_coalition_rewards = [] # np.zeros((self.num_tasks,))
@@ -94,16 +93,6 @@ class MRTA_XD():
             task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
         #print("overall rewards: ", task_rewards)
 
-        """
-
-        for t in tasks_ordered:
-            task_reward, _ = self.reward_model.compute_node_reward_dist(t,task_coalition_rewards[t],[task_rewards[k] for k in self.in_nbrs[t]], np.zeros_like(task_rewards))
-            task_rewards.append(task_reward)
-        """
-        #print('task coalitions: ', task_coalitions)
-        #print('task_rewards: ', task_rewards)
-        #print(x)
-
         return quicksum(task_rewards)
 
 
@@ -114,19 +103,12 @@ class MRTA_XD():
         for a in range(self.num_robots):
             cons_ind = self.ind_x_ak[a,0]
             self.model.addCons(self.x_ak[cons_ind] == 1)
-        #self.model.addCons(quicksum([self.o_akk[i] for i in range(len(self.o_akk))])==0)
-        #self.model.addCons(quicksum([self.s_k[i] for i in range(len(self.s_k))])==0)
-        #self.model.addCons(quicksum([self.f_k[i] for i in range(len(self.f_k))])==0)
-        #self.model.addCons(quicksum([self.z_ak[i] for i in range(len(self.z_ak))])==0)
-        #self.model.addCons(self.o_akk[0] + self.o_akk[5]+ self.o_akk[10]+ self.o_akk[15]+ self.o_akk[20]+ self.o_akk[25] == 0)
 
         # constraint d: every task an agent performs has exactly one predecessor
         for a in range(self.num_robots):
             for k_p in range(self.num_tasks):
                 cons_inds = self.ind_o_akk[a,:,k_p]
                 var_list = [self.o_akk[ind] for ind in cons_inds]
-                print([self.o_akk[ind] for ind in cons_inds])
-                print(self.x_ak[self.ind_x_ak[a,k_p+1]])
                 self.model.addCons(quicksum(var_list) - self.x_ak[self.ind_x_ak[a,k_p+1]] == 0)
 
         # constraint e: every task an agent performs has exactly one successor except for the last task
@@ -138,7 +120,7 @@ class MRTA_XD():
                 self.model.addCons(quicksum(var_list) + self.z_ak[self.ind_z_ak[a,k]] - self.x_ak[self.ind_x_ak[a,k]] == 0)
 
         # constraint f: each robot has exactly one final task
-        # TODO is it necessary to mulyiply by x_ak here??
+        # TODO is it necessary to multiply by x_ak here??
         for a in range(self.num_robots):
             var_prod_list = [self.x_ak[self.ind_x_ak[a,k]]*self.z_ak[self.ind_z_ak[a,k]] for k in range(self.num_tasks+1)]
             self.model.addCons(quicksum(var_prod_list) == 1)
@@ -162,29 +144,9 @@ class MRTA_XD():
                     var = self.o_akk[self.ind_o_akk[a,k+1,k_p]]
                     self.model.addCons(var*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
-        # DURATION CONSTRAINTS (with duration of 1 right now) -- constraint j
+        # DURATION CONSTRAINTS
         for k in range(self.num_tasks):
-            self.model.addCons(self.f_k[k] >= self.s_k[k] + 1)
-        """
-
-        # constraint a: every agent starts with one dummy task -- equal to 1
-        for a in range(self.num_robots):
-            constraints.append(x_ak[a,0] - 1)
-
-        # constraint d: every task an agent performs has exactly one predecessor
-        for a in range(self.num_robots):
-            for k_p in range(self.num_tasks):
-                constraints.append(np.sum(o_akk[a,:,k_p])-x_ak[a,k_p+1])
-        # constraint e: every task an agent performs has exactly one successor except the last task
-        for a in range(self.num_robots):
-            for k in range(self.num_tasks+1): #K_a+
-                constraints.append(np.sum(o_akk[a,k,:]) + z_ak[a,k] - x_ak[a,k])
-
-        return np.array(constraints)
-        """
-    def jacobian(self, x):
-        """Returns the Jacobian of the constraints with respect to x."""
-        return np.array(self.jacobian_handle(x))
+            self.model.addCons(self.f_k[k] >= self.s_k[k] + self.task_times[k])
 
     def partition_x(self, x):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -201,7 +163,6 @@ class MRTA_XD():
         return x_ak, o_akk, z_ak, s_k, f_k
 
     def get_coalition(self, node_i, f):
-
         coalition_function = getattr(self, self.reward_model.coalition_types[node_i])
         #breakpoint()
         return coalition_function(f, param=self.reward_model.coalition_params[node_i])
