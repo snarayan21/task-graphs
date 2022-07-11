@@ -93,7 +93,7 @@ class MRTA_XD():
             task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
         #print("overall rewards: ", task_rewards)
 
-        return quicksum(task_rewards)
+        return quicksum(task_rewards) - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
 
 
     def set_constraints(self):

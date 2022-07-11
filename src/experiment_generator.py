@@ -78,10 +78,15 @@ class ExperimentGenerator():
             ddp_fin_time = time.time()
             ddp_elapsed_time = ddp_fin_time-greedy_fin_time
 
-             #solve baseline
+            #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
             baseline_elapsed_time = baseline_fin_time-ddp_fin_time
+
+            #solve minlp
+            task_graph.solve_graph_minlp()
+            minlp_fin_time = time.time()
+            minlp_elapsed_time = minlp_fin_time - baseline_fin_time
 
 
             ddp_data = trial_dir / "ddp_data.jpg"
@@ -121,6 +126,12 @@ class ExperimentGenerator():
             results_dict['ddp_solution'] = task_graph.last_ddp_solution
             results_dict['ddp_solution_time'] = ddp_elapsed_time
             results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
+
+
+            results_dict['minlp_reward'] = task_graph.last_minlp_solution_val
+            results_dict['minlp_solution'] = task_graph.last_minlp_solution
+            results_dict['minlp_solution_time'] = minlp_elapsed_time
+            results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
 
 
             results_dict_list.append(results_dict)

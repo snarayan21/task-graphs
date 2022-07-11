@@ -463,7 +463,10 @@ class TaskGraph:
             #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
             if len(incoming_edges) > 0:
                 #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
-                task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)])
+                if np.array([flow[e[0]]<=0.000001 for e in incoming_edges]).all():
+                    task_start_times[current_node] = 0.0
+                else:
+                    task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
