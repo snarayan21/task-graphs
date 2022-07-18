@@ -104,6 +104,7 @@ class DDP:
             if(np.size(q_uu) == 1):
                 q_uu = np.atleast_2d(np.squeeze(q_uu))
 
+            print(q_uu)
             if not np.all(np.linalg.eigvals(q_uu) > 0):
                 lam = -np.min(np.linalg.eigvals(q_uu))
                 if q_uu.shape[0] == 1:
@@ -338,9 +339,8 @@ class DDP:
                             #TODO: confirm that indices are consistent
                             h[i+4] = 1 - curr_u[i-nu]
 
-                        #print(P)
-                        P = cvxopt_matrix(P, tc='d')
-                        q = cvxopt_matrix(q, tc='d')
+                        P = cvxopt_matrix(P.real, tc='d')
+                        q = cvxopt_matrix(q.real, tc='d')
                         A = cvxopt_matrix(A, tc='d')
                         b = cvxopt_matrix(b, tc='d')
                         G = cvxopt_matrix(G, tc='d')
