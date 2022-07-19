@@ -24,12 +24,12 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, task_times=None, scenario="test", adaptive=1):
-        self.scenario = scenario
-        self.adaptive = adaptive
+                 numrobots, task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
         self.max_steps = max_steps
         self.num_tasks = num_tasks
         self.num_robots = numrobots
+        self.minlp_time_constraint = minlp_time_constraint
+        self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
@@ -71,8 +71,8 @@ class TaskGraph:
             dependency_types=dependency_types,
             influence_agg_func_types=aggs,
             reward_model=self.reward_model,
-            task_graph = self.task_graph,
-            task_times = self.task_times
+            task_graph=self.task_graph,
+            task_times=self.task_times,
         )
 
         # variables using in the optimization
@@ -107,39 +107,6 @@ class TaskGraph:
         """
         return f
 
-
-
-    def update_reward_curves(self):
-        """
-        Simulates the "disturbance" by changing the reward curves directly
-        :return:
-        """
-        #get current coalition params from reward model estimate
-        self.coalition_params = self.reward_model_estimate.get_coalition_params()
-
-        if "test" in self.scenario:
-            # let's degrade task 2 first
-            if self.coalition_params[2][0] > 0.9:
-                self.delta = -0.05
-            if self.coalition_params[2][0] < 0.1:
-                self.delta = 0.05
-
-            self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
-        elif "farm" in self.scenario:
-            ######## TEST 1 (Break the symmetry between 1 and 3) ###############################
-            # let's degrade task 2 first
-
-
-            ######## TEST 2 (Make prep feeding task 7 infeasible) #######################
-            if self.coalition_params[7][0] > 0.9:
-                self.delta = -0.05
-            if self.coalition_params[7][0] < 0.1:
-                self.delta = 0.01
-
-            self.coalition_params[7][0] = self.coalition_params[7][0] + self.delta
-        #TODO: Implement the adaptive piece here
-        self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
-
     def initializeSolver(self):
         '''
         This function will define variables, functions, and bounds based on the input info
@@ -168,6 +135,24 @@ class TaskGraph:
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
+
+        if self.minlp_time_constraint:
+            if self.last_baseline_solution is not None:
+                s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
+                constraint_time = np.max(finish_times)
+                breakpoint()
+                for k in range(self.num_tasks):
+                    self.minlp_obj.model.addCons(self.minlp_obj.f_k[k] <= constraint_time+0.01)
+            else:
+                raise(NotImplementedError, "MINLP solve must be called after baseline solve when time constraint is used")
+
+        if self.minlp_reward_constraint:
+            if self.last_baseline_solution is not None:
+                constraint_reward = -1*self.reward_model.flow_cost(self.last_baseline_solution.x)
+                self.minlp_obj.model.addCons(self.minlp_obj.z <= constraint_reward)
+            else:
+                raise(NotImplementedError, "MINLP solve must be called after baseline solve when reward constraint is used")
+
         self.minlp_obj.model.optimize()
         self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
 

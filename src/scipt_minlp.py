@@ -41,10 +41,10 @@ class MRTA_XD():
 
         self.model = Model("MRTA_XD")
         self.add_variables() # keep variables as lists, but use indexing array
-        z = self.model.addVar("z")
+        self.z = self.model.addVar("z")
         self.set_constraints()
-        self.model.addCons(z <= self.objective())
-        self.model.setObjective(z, sense='maximize')
+        self.model.addCons(self.z <= self.objective())
+        self.model.setObjective(self.z, sense='maximize')
 
 
     def add_variables(self):
