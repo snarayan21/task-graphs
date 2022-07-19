@@ -35,6 +35,13 @@ class TaskGraph:
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
 
+        self.edges = edges
+        self.coalition_params = coalition_params
+        self.coalition_types = coalition_types
+        self.dependency_params = dependency_params
+        self.dependency_types = dependency_types
+        self.aggs = aggs
+
         if task_times is None:
             task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
         self.task_times = task_times
@@ -61,19 +68,7 @@ class TaskGraph:
                                 dependency_types=dependency_types,
                                 influence_agg_func_types=aggs)
 
-        self.minlp_obj = MRTA_XD(
-            num_tasks=self.num_tasks,
-            num_robots=self.num_robots,
-            dependency_edges=edges,
-            coalition_params=coalition_params,
-            coalition_types=coalition_types,
-            dependency_params=dependency_params,
-            dependency_types=dependency_types,
-            influence_agg_func_types=aggs,
-            reward_model=self.reward_model,
-            task_graph=self.task_graph,
-            task_times=self.task_times,
-        )
+        self.minlp_obj = self.initialize_minlp_obj()
 
         # variables using in the optimization
         self.var_flow = None
@@ -98,7 +93,21 @@ class TaskGraph:
         self.buffer_hist = None
         self.constraint_violation = None
 
-
+    def initialize_minlp_obj(self):
+        obj = MRTA_XD(
+            num_tasks=self.num_tasks,
+            num_robots=self.num_robots,
+            dependency_edges=self.edges,
+            coalition_params=self.coalition_params,
+            coalition_types=self.coalition_types,
+            dependency_params=self.dependency_params,
+            dependency_types=self.dependency_types,
+            influence_agg_func_types=self.aggs,
+            reward_model=self.reward_model,
+            task_graph=self.task_graph,
+            task_times=self.task_times,
+        )
+        return obj
 
     def identity(self, f):
         """
@@ -140,9 +149,24 @@ class TaskGraph:
             if self.last_baseline_solution is not None:
                 s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
                 constraint_time = np.max(finish_times)
+                status = ""
                 breakpoint()
-                for k in range(self.num_tasks):
-                    self.minlp_obj.model.addCons(self.minlp_obj.f_k[k] <= constraint_time+0.01)
+                constraint_buffer = 0
+                while status != "optimal" and status != "timelimit":
+                    minlp_obj = self.initialize_minlp_obj()
+                    cons_list = []
+                    for k in range(self.num_tasks):
+                        cons_list.append(minlp_obj.model.addCons(minlp_obj.f_k[k] <= constraint_time+constraint_buffer))
+
+                    minlp_obj.model.optimize()
+
+                    constraint_buffer = constraint_buffer + 0.1
+                    print(constraint_buffer)
+                    #breakpoint()
+                    status = minlp_obj.model.getStatus()
+
+                self.minlp_obj = minlp_obj
+                self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
             else:
                 raise(NotImplementedError, "MINLP solve must be called after baseline solve when time constraint is used")
 
@@ -153,9 +177,10 @@ class TaskGraph:
             else:
                 raise(NotImplementedError, "MINLP solve must be called after baseline solve when reward constraint is used")
 
-        self.minlp_obj.model.optimize()
-        self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
-
+        if not self.minlp_time_constraint and not self.minlp_reward_constraint:
+            self.minlp_obj.model.optimize()
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        breakpoint()
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
         oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
