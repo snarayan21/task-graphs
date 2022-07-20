@@ -105,7 +105,7 @@ class TaskGraph:
             influence_agg_func_types=self.aggs,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
-            task_times=self.task_times,
+            task_times=self.task_times
         )
         return obj
 
@@ -150,7 +150,6 @@ class TaskGraph:
                 s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
                 constraint_time = np.max(finish_times)
                 status = ""
-                breakpoint()
                 constraint_buffer = 0
                 while status != "optimal" and status != "timelimit":
                     minlp_obj = self.initialize_minlp_obj()
@@ -172,11 +171,13 @@ class TaskGraph:
 
         if self.minlp_reward_constraint:
             if self.last_baseline_solution is not None:
+                self.minlp_obj = self.initialize_minlp_obj()
                 constraint_reward = -1*self.reward_model.flow_cost(self.last_baseline_solution.x)
-                self.minlp_obj.model.addCons(self.minlp_obj.z <= constraint_reward)
+                self.minlp_obj.model.addCons(self.minlp_obj.z >= constraint_reward)
             else:
                 raise(NotImplementedError, "MINLP solve must be called after baseline solve when reward constraint is used")
-
+            self.minlp_obj.model.optimize()
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         if not self.minlp_time_constraint and not self.minlp_reward_constraint:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
