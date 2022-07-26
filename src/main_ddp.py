@@ -26,7 +26,7 @@ def main():
 
     task_graph.initialize_solver_ddp(**track_args['ddp'])
     task_graph.solve_ddp()
-    task_graph.solve_graph_minlp()
+    #task_graph.solve_graph_minlp()
 
     s,f = task_graph.time_task_execution(task_graph.last_ddp_solution)
     heights = []
