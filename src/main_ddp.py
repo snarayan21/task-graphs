@@ -34,12 +34,19 @@ def main():
     print('task finish times: ', f)
     print('task durations: ', task_graph.task_times)
 
+    #HOW TO GENERATE AND RUN TOWER
+    #1. pull from autonomous_construction branch
+    #2. make sure you are in task-graphs/src
+    #3. run: python ./autonomous_construction/initial_blocks.py [tower base width] [# of tower layers] [tower name]
+    #4. run: python main_ddp.py -cfg ./autonomous_construction/generated_examples/[tower name].toml [whatver flags / args]
+    #Note the use of the flows_to_taskrobots and graph_tower functions below. Imported from src/draw_construction.py
+    
     if("tower" in track_args):
         heights = track_args["tower"]["heights"]
         blocks = track_args["tower"]["blocks"]
         totrobots = 20
         taskrobots = flows_to_taskrobots(task_graph.last_ddp_solution, track_args['exp']["edges"], track_args['exp']["num_tasks"], totrobots)
-        graph_tower(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'])
+        graph_tower(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'], (args.cfg).split("/")[-1].split(".")[0])
 
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)

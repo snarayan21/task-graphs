@@ -9,7 +9,7 @@ def start_finish_to_event_list(s, f):
     s = [(i-1, s[i], "s") for i in range(1,n-1)]
     f = [(i-1, f[i], "f") for i in range(1,n-1)]
     events = s + f
-    events = sorted(events, key = lambda x: x[1])
+    events = sorted(events, key = lambda x: (x[1], x[0]))
     return events
 
 def robots_to_fraction(totrobots, taskrobots):
@@ -19,7 +19,7 @@ def robots_to_fraction(totrobots, taskrobots):
 def sigmoid(flow, param):
     return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
-def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions):
+def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions, fname):
     fracs = robots_to_fraction(totrobots, taskrobots)
     events = start_finish_to_event_list(s, f)
     print("eventlist", events)
@@ -75,7 +75,7 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
         xstart, _, width, ystart, height = full_blocks[event[0]]
         if(event[2] == "s"):
             #block start event
-            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, edgecolor="gray", facecolor="none", linestyle="--")
+            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, facecolor="gray", alpha=0.5)
             ax.add_patch(r)
         else:
             #block end event
@@ -89,11 +89,11 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
             rew = sigmoid(real_frac, coalitions[event[0]+1])
             max_rew = coalitions[event[0]+1][0]
             colorhex = "0x{:02x}".format(int((rew/max_rew)*255))[2:]
-            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, edgecolor="#00"+colorhex+"00", facecolor="#00"+colorhex+"00")
+            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, facecolor="#00"+colorhex+"00")
             ax.add_patch(r)
 
     anim = FuncAnimation(fig, animate, frames=len(events), interval=1000, repeat = False)
-
+    anim.save("./autonomous_construction/generated_examples/"+fname+".mp4", writer='ffmpeg',fps=1)
     plt.show()
 
 def flows_to_taskrobots(flows, edges, numtasks, numrobots):
