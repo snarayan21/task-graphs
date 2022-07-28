@@ -10,7 +10,7 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, reward_model, task_graph, task_times):
+                 dependency_types,influence_agg_func_types, reward_model, task_graph, task_times, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -22,6 +22,7 @@ class MRTA_XD():
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
         self.task_times = task_times
+        self.time_limit = time_limit
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
             self.in_nbrs.append([n for n in self.task_graph.predecessors(curr_node)])
@@ -53,7 +54,7 @@ class MRTA_XD():
         z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
         s_len = self.num_tasks
         f_len = self.num_tasks
-        time_ub = 1000 #set this to something sensible at some point
+        time_ub = self.time_limit #set this to something sensible at some point
         # add x_ak vars
         self.x_ak = [self.model.addVar("x_%d"%i, vtype="B") for i in range(x_len)] #add binary variables for x_ak
         self.o_akk = [self.model.addVar("o_%d"%i, vtype="B") for i in range(o_len)] #add binary variables for o_akk

@@ -256,6 +256,8 @@ class ExperimentGenerator():
         # sample from available agg types -- probably all sum for now???
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
+        taskgraph_args_exp['minlp_time_constraint'] = True #TODO make this a parameter
+
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp',
                                  'constraint_buffer': 'soft', #None or 'soft' or 'hard'
