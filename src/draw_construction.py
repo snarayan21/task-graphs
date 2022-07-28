@@ -9,7 +9,7 @@ def start_finish_to_event_list(s, f):
     s = [(i-1, s[i], "s") for i in range(1,n-1)]
     f = [(i-1, f[i], "f") for i in range(1,n-1)]
     events = s + f
-    events = sorted(events, key = lambda x: x[1])
+    events = sorted(events, key = lambda x: (x[1], x[0]))
     return events
 
 def robots_to_fraction(totrobots, taskrobots):
@@ -19,21 +19,21 @@ def robots_to_fraction(totrobots, taskrobots):
 def sigmoid(flow, param):
     return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
-def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions):
+def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions, fname):
     fracs = robots_to_fraction(totrobots, taskrobots)
     events = start_finish_to_event_list(s, f)
     print("eventlist", events)
     numtasks = len(coalitions)
     t_height = sum(layer_heights)
     t_width = block_info[0][-1][1]
-    fig = plt.figure()
-    ax = plt.axes()
+    fig, ax = plt.subplots()
     ax.set_xlim([0,int(t_height*1.1)])
     ax.set_ylim([-1*(int(t_width*0.1)),int(t_width*1.1)])
     full_blocks = []
     for j, layer in enumerate(block_info):
         layer_unpacked = [ b + [sum(layer_heights[:j]), layer_heights[j]] for b in layer ]
         full_blocks = full_blocks + layer_unpacked
+    eventblocks = {}
     def animate(i):
         """ ax.clear()
         edone = 0
@@ -70,30 +70,46 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
         ax.set_ylim([-1*(int(t_width*0.1)),int(t_width*1.1)])
 
         print("--------") """
+        ax.clear()
+        ax.set_xlim([0,int(t_height*1.1)])
+        ax.set_ylim([-1*(int(t_width*0.1)),int(t_width*1.1)])
+        for j, event in enumerate(events[:i+1]):
+            xstart, _, width, ystart, height = full_blocks[event[0]]
+            if(event[2] == "s"):
+                #block start event
+                if(j not in eventblocks):
+                    r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, facecolor="gray", alpha=1)
+                    eventblocks[j] = r
+                    ax.add_patch(r)
+                else:
+                    r = eventblocks[j]
+                    ax.add_patch(r)
 
-        event = events[i]
-        xstart, _, width, ystart, height = full_blocks[event[0]]
-        if(event[2] == "s"):
-            #block start event
-            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, edgecolor="gray", facecolor="none", linestyle="--")
-            ax.add_patch(r)
-        else:
-            #block end event
-            task_frac = fracs[event[0]+1]
-            stdev = 0.05*(1-task_frac)
-            real_frac = np.random.normal(task_frac, stdev)
-            if(real_frac < 0):
-                real_frac = 0
-            if(real_frac > 1):
-                real_frac = 1
-            rew = sigmoid(real_frac, coalitions[event[0]+1])
-            max_rew = coalitions[event[0]+1][0]
-            colorhex = "0x{:02x}".format(int((rew/max_rew)*255))[2:]
-            r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, edgecolor="#00"+colorhex+"00", facecolor="#00"+colorhex+"00")
-            ax.add_patch(r)
+            elif(event[2] == "f"):
+                #block end event
+                if(j not in eventblocks):
+                    task_frac = fracs[event[0]+1]
+                    stdev = 0.05*(1-task_frac)
+                    real_frac = np.random.normal(task_frac, stdev)
+                    if(real_frac < 0):
+                        real_frac = 0
+                    if(real_frac > 1):
+                        real_frac = 1
+                    rew = sigmoid(real_frac, coalitions[event[0]+1])
+                    max_rew = coalitions[event[0]+1][0]
+                    colorhex = "0x{:02x}".format(int((rew/max_rew)*255))[2:]
+                    r = patches.Rectangle((xstart, ystart), width, height, linewidth=3, facecolor="#00"+colorhex+"00")
+                    eventblocks[j] = r
+                    ax.add_patch(r)
+                else:
+                    r = eventblocks[j]
+                    ax.add_patch(r)
+            
+            else:
+                pass
 
-    anim = FuncAnimation(fig, animate, frames=len(events), interval=1000, repeat = False)
-
+    anim = FuncAnimation(fig, animate, frames=int(len(events)), interval=1000, repeat = False)
+    anim.save("./autonomous_construction/generated_examples/"+fname+".mp4", writer='ffmpeg',fps=1)
     plt.show()
 
 def flows_to_taskrobots(flows, edges, numtasks, numrobots):
