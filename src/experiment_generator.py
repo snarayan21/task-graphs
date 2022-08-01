@@ -46,9 +46,8 @@ class ExperimentGenerator():
 
             # generate args for a trial within the parameters loaded into the experiment
             trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
-            task_graph = TaskGraph(**trial_args['exp'])
 
-            #create directory for results
+             #create directory for results
             dir_name = "trial_" + str(trial_ind)
             trial_dir = self.experiment_dir / dir_name
             trial_dir.mkdir(parents=True, exist_ok=False)
@@ -57,6 +56,10 @@ class ExperimentGenerator():
             with open(args_file, "w") as f:
                 toml.dump(trial_args,f)
 
+            task_graph = TaskGraph(**trial_args['exp'])
+
+
+
             graph_img_file = trial_dir / "graph.jpg"
             label_dict = {}
             for i in range(task_graph.num_tasks):
@@ -64,7 +67,7 @@ class ExperimentGenerator():
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
             nx.draw(nx_task_graph, labels=label_dict, pos=node_pos)
             plt.savefig(graph_img_file.absolute())
-
+            breakpoint()
             start = time.time()
 
             #solve greedy
@@ -146,7 +149,7 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_a()
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
         num_edges = len(edge_list)
 
         #nx.draw(nx_task_graph)
@@ -274,6 +277,79 @@ class ExperimentGenerator():
         print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
 
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
+
+    def generate_graph_topology_b(self):
+        num_layers = 3
+        num_layer_nodes_max = 2 #must be > 1
+
+        nx_task_graph = nx.DiGraph()
+        node_list = [0]
+        edge_list = []  # list of edges in form (x,y)
+        old_layer = [0]
+        frontiers_list = []
+
+        cur_layer = 0  # current number of nodes in the graph
+        cur_node = 1
+        #layer 0
+        for node in range(np.random.randint(1, num_layer_nodes_max+1)):
+            node_list.append(cur_node)
+            old_layer.append(cur_node)
+            edge_list.append((0, cur_node))
+            cur_node += 1
+
+        frontiers_list.append([0])
+        frontiers_list.append(old_layer[1:])
+
+        for layer in range(1,num_layers):
+            #generate 1 to num_layer_nodes_max nodes for new layer
+            new_layer_size = np.random.randint(1, num_layer_nodes_max+1)
+            new_layer = np.arange(cur_node,cur_node + new_layer_size)
+            for new_node in new_layer:
+                node_list.append(new_node)
+
+            #generate connection from old layer to new layer
+            #   guarantees all old_layer nodes are connected to 1+ nodes in new layer
+            connected_new_nodes = np.array([])
+            for old_node in old_layer:
+                #TODO :
+                """connections can be changed to control the complexity of the graph.
+                Options include limiting num_connections, sampling num_connections
+                non-uniformly (e.g., more likely to have only one connection), or 
+                choosing connection in a manner that considers all of old layer rather
+                than on a node by node basis. (None of these methods are implemented yet)
+                """
+                num_edges = np.random.randint(1,new_layer_size+1) #from old_node
+                edge_destinations = np.random.choice(new_layer, num_edges, replace=False)
+                connected_new_nodes = np.append(connected_new_nodes, edge_destinations)
+                for edge_destination in edge_destinations:
+                    edge_list.append((int(old_node), int(edge_destination)))
+
+            #check if new layer nodes all have connected, if not, connect to earlier nodes
+            unconnected_new_nodes = np.setdiff1d(new_layer, np.unique(connected_new_nodes).astype(int))
+            for node in unconnected_new_nodes:
+                edge_origin = np.random.choice(np.arange(cur_node))
+                edge_list.append((int(edge_origin), node))
+
+            cur_node = cur_node + new_layer_size
+            old_layer = new_layer
+            frontiers_list.append(old_layer)
+
+        # terminate all frontier nodes into the sink node
+        sink = cur_node
+        node_list.append(sink)
+        frontiers_list.append([sink])
+        for node in old_layer:
+            edge_list.append((int(node), sink))
+
+        num_edges = len(edge_list)
+        trial_num_nodes = len(node_list)
+        nx_task_graph.add_nodes_from(node_list)
+        nx_task_graph.add_edges_from(edge_list)
+        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
+        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
+        breakpoint()
+        return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
+
 
 def main():
 
