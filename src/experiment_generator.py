@@ -146,61 +146,9 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        nx_task_graph = nx.DiGraph()
-        node_list = [0]
-        edge_list = []  # list of edges in form (x,y)
-        old_node_frontier = [0]
-        new_node_frontier = []
-        frontiers_list = []
-        converge_flag = False
-        branching_likelihood = 0.4
-        cur_nodes = 1  # current number of nodes in the graph
-        while cur_nodes < self.num_nodes - 1:
-            converge_flag = False  # converge flag cannot carry over to new frontier
-            for node in old_node_frontier:
-                branch_rand = np.random.uniform(low=0.0, high=1.0)
-                converge_rand = np.random.uniform(low=0.0, high=1.0)
-                branch = branch_rand < branching_likelihood
-                if branch:  # add two nodes to graph and frontier, add two edges from current node to new nodes, remove old node from frontier
-                    node_list.append(cur_nodes)
-                    new_node_frontier.append(cur_nodes)
-                    edge_list.append((node, cur_nodes))
-                    cur_nodes += 1
-
-                    if converge_flag:
-                        edge_list.append((node, new_node_frontier[-2]))
-                    else:
-                        node_list.append(cur_nodes)
-                        new_node_frontier.append(cur_nodes)
-                        edge_list.append((node, cur_nodes))
-                        cur_nodes += 1
-
-                else:
-                    if converge_flag:
-                        edge_list.append((node, new_node_frontier[-1]))
-                    else:
-                        node_list.append(cur_nodes)
-                        new_node_frontier.append(cur_nodes)
-                        edge_list.append((node, cur_nodes))
-                        cur_nodes += 1
-
-                converge_flag = converge_rand < branching_likelihood and node != old_node_frontier[-1]
-            old_node_frontier = new_node_frontier
-            frontiers_list.append(new_node_frontier)
-            new_node_frontier = []
-        # terminate all frontier nodes into the sink node
-
-        node_list.append(cur_nodes)
-        frontiers_list.append([cur_nodes])
-        for node in old_node_frontier:
-            edge_list.append((node, cur_nodes))
-
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_a()
         num_edges = len(edge_list)
-        trial_num_nodes = len(node_list)
-        nx_task_graph.add_nodes_from(node_list)
-        nx_task_graph.add_edges_from(edge_list)
-        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
-        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
+
         #nx.draw(nx_task_graph)
         #plt.show()
 
@@ -266,6 +214,66 @@ class ExperimentGenerator():
                                  }
 
         return taskgraph_args, nx_task_graph, node_pos
+
+    def generate_graph_topology_a(self):
+        nx_task_graph = nx.DiGraph()
+        node_list = [0]
+        edge_list = []  # list of edges in form (x,y)
+
+
+        old_node_frontier = [0]
+        new_node_frontier = []
+        frontiers_list = []
+        converge_flag = False
+        branching_likelihood = 0.4
+        cur_nodes = 1  # current number of nodes in the graph
+        while cur_nodes < self.num_nodes - 1:
+            converge_flag = False  # converge flag cannot carry over to new frontier
+            for node in old_node_frontier:
+                branch_rand = np.random.uniform(low=0.0, high=1.0)
+                converge_rand = np.random.uniform(low=0.0, high=1.0)
+                branch = branch_rand < branching_likelihood
+                if branch:  # add two nodes to graph and frontier, add two edges from current node to new nodes, remove old node from frontier
+                    node_list.append(cur_nodes)
+                    new_node_frontier.append(cur_nodes)
+                    edge_list.append((node, cur_nodes))
+                    cur_nodes += 1
+
+                    if converge_flag:
+                        edge_list.append((node, new_node_frontier[-2]))
+                    else:
+                        node_list.append(cur_nodes)
+                        new_node_frontier.append(cur_nodes)
+                        edge_list.append((node, cur_nodes))
+                        cur_nodes += 1
+
+                else:
+                    if converge_flag:
+                        edge_list.append((node, new_node_frontier[-1]))
+                    else:
+                        node_list.append(cur_nodes)
+                        new_node_frontier.append(cur_nodes)
+                        edge_list.append((node, cur_nodes))
+                        cur_nodes += 1
+
+                converge_flag = converge_rand < branching_likelihood and node != old_node_frontier[-1]
+            old_node_frontier = new_node_frontier
+            frontiers_list.append(new_node_frontier)
+            new_node_frontier = []
+        # terminate all frontier nodes into the sink node
+
+        node_list.append(cur_nodes)
+        frontiers_list.append([cur_nodes])
+        for node in old_node_frontier:
+            edge_list.append((node, cur_nodes))
+
+        trial_num_nodes = len(node_list)
+        nx_task_graph.add_nodes_from(node_list)
+        nx_task_graph.add_edges_from(edge_list)
+        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
+        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
+
+        return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
 def main():
 
