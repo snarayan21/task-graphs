@@ -161,7 +161,6 @@ class TaskGraph:
 
                     constraint_buffer = constraint_buffer + 0.1
                     print(constraint_buffer)
-                    #breakpoint()
                     status = minlp_obj.model.getStatus()
 
                 self.minlp_obj = minlp_obj
@@ -181,7 +180,7 @@ class TaskGraph:
         if not self.minlp_time_constraint and not self.minlp_reward_constraint:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
-        breakpoint()
+
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
         oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))

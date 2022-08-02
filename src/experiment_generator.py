@@ -10,7 +10,7 @@ import time
 
 class ExperimentGenerator():
 
-    def __init__(self,cmd_args):
+    def __init__(self, cmd_args):
         all_args = toml.load(cmd_args.cfg)
         exp_args = all_args['exp']
 
@@ -28,11 +28,10 @@ class ExperimentGenerator():
         self.experiment_dir = self.experiment_data_dir / experiment_dir_name
         self.experiment_dir.mkdir(parents=True, exist_ok=False)
 
-        # GENERATE RANDOM DAG with parameters num_nodes, max_width
-        self.num_nodes = exp_args['num_nodes'] #NOTE num_nodes may not be the EXACT number of nodes in the graph - varies by 1 or 2
-        self.max_width = exp_args['max_width']
-        # TODO use max_width
-
+        # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
+        #self.num_layers = exp_args['num_layers']
+        #self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
+        self.num_nodes = 6
     def run_trials(self):
         """Runs all trials for the given experiment. Creates their directories, runs the DDP and baseline solution,
          and saves the results to a file in each directory. Also stores the results in the ExperimentGenerator for
@@ -47,7 +46,7 @@ class ExperimentGenerator():
             # generate args for a trial within the parameters loaded into the experiment
             trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
 
-             #create directory for results
+            #create directory for results
             dir_name = "trial_" + str(trial_ind)
             trial_dir = self.experiment_dir / dir_name
             trial_dir.mkdir(parents=True, exist_ok=False)
@@ -56,9 +55,9 @@ class ExperimentGenerator():
             with open(args_file, "w") as f:
                 toml.dump(trial_args,f)
 
+            print("TRIAL GENERATED")
             task_graph = TaskGraph(**trial_args['exp'])
-
-
+            print("TASK GRAPH INITIALIZED")
 
             graph_img_file = trial_dir / "graph.jpg"
             label_dict = {}
@@ -67,14 +66,13 @@ class ExperimentGenerator():
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
             nx.draw(nx_task_graph, labels=label_dict, pos=node_pos)
             plt.savefig(graph_img_file.absolute())
-            breakpoint()
             start = time.time()
 
             #solve greedy
             task_graph.solve_graph_greedy()
             greedy_fin_time = time.time()
             greedy_elapsed_time = greedy_fin_time-start
-
+            print("GREEDY SOLUTION FINISHED")
             run_ddp = False
             if run_ddp:
                 #solve with ddp
@@ -82,10 +80,13 @@ class ExperimentGenerator():
                 task_graph.solve_ddp()
                 ddp_fin_time = time.time()
                 ddp_elapsed_time = ddp_fin_time-greedy_fin_time
+                print("DDP SOLUTION FINISHED")
 
             #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
+            print("BASELINE SOLUTION FINISHED")
+
             if run_ddp:
                 baseline_elapsed_time = baseline_fin_time-ddp_fin_time
             else:
@@ -95,6 +96,7 @@ class ExperimentGenerator():
             task_graph.solve_graph_minlp()
             minlp_fin_time = time.time()
             minlp_elapsed_time = minlp_fin_time - baseline_fin_time
+            print("MINLP SOLUTION FINISHED")
 
             if run_ddp:
                 ddp_data = trial_dir / "ddp_data.jpg"
@@ -154,7 +156,7 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_a()
         num_edges = len(edge_list)
 
         #nx.draw(nx_task_graph)
@@ -284,8 +286,8 @@ class ExperimentGenerator():
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
     def generate_graph_topology_b(self):
-        num_layers = 3
-        num_layer_nodes_max = 2 #must be > 1
+        num_layers = self.num_layers
+        num_layer_nodes_max = self.num_layer_nodes_max #must be > 1
 
         nx_task_graph = nx.DiGraph()
         node_list = [0]
