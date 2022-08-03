@@ -467,21 +467,25 @@ class TaskGraph:
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
-            #print(current_node)
-            #print(frontier_nodes)
-            #print(incoming_edges)
+            incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
+            # print(current_node)
+            # print(frontier_nodes)
+            # print(incoming_edges)
+            # print([flow[incoming_edge_inds[i]] for i in range(len(incoming_edges))])
             #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
             if len(incoming_edges) > 0:
-                #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
-                if np.array([flow[e[0]]<=0.000001 for e in incoming_edges]).all():
+                #print("node: ", current_node, " incoming flow: ", )
+
+                if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
                     task_start_times[current_node] = 0.0
                 else:
-                    task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)])
+                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
             for n in self.task_graph.neighbors(current_node):
-                frontier_nodes.append(n)
+                if n not in frontier_nodes:
+                    frontier_nodes.append(n)
 
         return task_start_times, task_finish_times
 
