@@ -1,5 +1,5 @@
 import cyipopt
-from pyscipopt import Model, exp, quicksum
+from pyscipopt import Model, exp, quicksum, quickprod
 import autograd.numpy as np
 from networkx import topological_sort
 from autograd import grad, jacobian
@@ -41,12 +41,15 @@ class MRTA_XD():
         self.node_order = list(topological_sort(task_graph))
 
         self.model = Model("MRTA_XD")
+        print("MODEL INITIALIZED")
         self.add_variables() # keep variables as lists, but use indexing array
         self.z = self.model.addVar("z")
         self.set_constraints()
+        print("CONSTRAINTS SET")
         self.model.addCons(self.z <= self.objective())
+        print("CONSTRAINT OBJECTIVE SET")
         self.model.setObjective(self.z, sense='maximize')
-
+        print("OBJECTIVE SET")
 
     def add_variables(self):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -82,7 +85,7 @@ class MRTA_XD():
             task_coalition_rewards.append(self.get_coalition(t,task_coalitions[t]))
         #print("coalitions: ", task_coalitions)
         #print("coalition func rewards: ",task_coalition_rewards)
-
+        print("COALITION REWARDS CALCULATED")
         task_influence_rewards = [None for _ in range(self.num_tasks)]
         task_influnce_agg = [None for _ in range(self.num_tasks)]
         task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
@@ -93,8 +96,8 @@ class MRTA_XD():
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
             task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
         #print("overall rewards: ", task_rewards)
-
-        return quicksum(task_rewards) - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
+        print("TASK REWARDS CALCULATED")
+        return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
 
 
     def set_constraints(self):
@@ -136,7 +139,8 @@ class MRTA_XD():
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
                     #print("Task ", k ," must precede task ", k_p)
-                    self.model.addCons((self.s_k[k_p]-self.f_k[k]) >= 0)
+                    is_task_completed = quickprod([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
+                    self.model.addCons(is_task_completed*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
         for a in range(self.num_robots):
@@ -179,6 +183,9 @@ class MRTA_XD():
     def polynomial(self, flow, param):
         val = quicksum([float(param[i])*flow**i for i in range(len(param))])
         return val
+
+    def null(self, flow, param):
+        return 0.0
 
     def influence_agg_and(self, deltas):
         return np.prod(np.array(deltas))
