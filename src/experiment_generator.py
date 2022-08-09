@@ -66,6 +66,7 @@ class ExperimentGenerator():
             #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
             nx.draw(nx_task_graph, labels=label_dict, pos=node_pos)
             plt.savefig(graph_img_file.absolute())
+            plt.clf()
             start = time.time()
 
             #solve greedy
@@ -124,6 +125,7 @@ class ExperimentGenerator():
             results_dict['baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
+            results_dict['baseline_makespan'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1][-1]
             results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
             results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
@@ -135,12 +137,15 @@ class ExperimentGenerator():
                 results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
                 results_dict['ddp_solution'] = task_graph.last_ddp_solution
                 results_dict['ddp_solution_time'] = ddp_elapsed_time
+                results_dict['ddp_makespan'] = task_graph.time_task_execution(task_graph.last_ddp_solution)[1][-1]
                 results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
+
 
 
             results_dict['minlp_reward'] = task_graph.last_minlp_solution_val
             results_dict['minlp_solution'] = task_graph.last_minlp_solution
             results_dict['minlp_solution_time'] = minlp_elapsed_time
+            results_dict['minlp_makespan'] = task_graph.last_minlp_solution[-1]
             results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
 
 
