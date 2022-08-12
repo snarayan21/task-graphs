@@ -252,7 +252,7 @@ class RewardModel:
         return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def dim_return(self, flow, param):
-        return param[0] - param[2] * np.exp(-1 * param[1] * flow)
+        return param[0] - param[2] * math.e**(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 
     def polynomial(self, flow, param):
