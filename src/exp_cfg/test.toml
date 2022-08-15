@@ -1,8 +1,9 @@
 [exp]
 exp_name = 'test'
-num_trials = 2
-num_nodes = 8
-max_width = 3
+num_trials = 5
+num_layers = 3
+num_layer_nodes_max = 2
+run_ddp = false
 
 
 
