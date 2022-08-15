@@ -58,6 +58,7 @@ def main():
     print('DDP solution reward: ', ddp_reward)
 
     print('MINLP solution reward: ')
+    task_graph.solve_graph_minlp()
     print(task_graph.last_minlp_solution_val)
 
     if args.greedy:
