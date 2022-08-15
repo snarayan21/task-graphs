@@ -207,7 +207,7 @@ class TaskGraph:
                         if verbose:
                             print("Agent ", a, " performs task ", k, " and then task ", k_p)
         self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
-        self.translate_minlp_objective(self.last_minlp_solution)
+        info_dict = self.translate_minlp_objective(self.last_minlp_solution)
 
     def solve_graph_scipy(self):
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
@@ -286,14 +286,16 @@ class TaskGraph:
             for i in range(max_iter):
                 # take gradient of cost function with respect to edge values
                 gradient_t = gradient_func(last_state,curr_node,num_assigned_edges)
-
+                if np.isnan(gradient_t).any():
+                    gradient_t = np.zeros_like(gradient_t)
+                    print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
                 # TODO: project gradient onto hyperplane that respects constraints
                 # FOR NOW: just normalize new state such that it is valid
 
                 # take a step along that vector direction
                 new_cand_state = last_state + dt*gradient_t
                 for k in range(num_edges):
-                    if new_cand_state[k] < 0:
+                    if new_cand_state[k] <= 0:
                         new_cand_state[k] = 0.00001
                 last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
 
@@ -301,6 +303,8 @@ class TaskGraph:
             # update self.last_greedy_solution
             for (edge_i, new_flow) in zip(out_edge_inds,last_state):
                 self.last_greedy_solution[edge_i] = new_flow
+                if np.isnan(new_flow):
+                    breakpoint()
             # continue to next node
             out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
             node_queue.extend(out_nbrs)
@@ -479,7 +483,10 @@ class TaskGraph:
                 if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
                     task_start_times[current_node] = 0.0
                 else:
-                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
+                    try:
+                        task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
+                    except(ValueError):
+                        breakpoint()
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
@@ -685,11 +692,12 @@ class TaskGraph:
                     if oakk_np[a,k+1,k_p] == 1:
                         print("Agent ", a, " performs task ", k, " and then task ", k_p)
         minlp_objective = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
-        self.translate_minlp_objective(minlp_objective)
+        info_dict = self.translate_minlp_objective(minlp_objective)
         breakpoint()
         import pdb; pdb.set_trace()
 
     def translate_minlp_objective(self, x):
+        info_dict = {}
         x_ak, o_akk, z_ak, s_k, f_k = self.minlp_obj.partition_x(x)
         # x_ak organized by agent
         x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
@@ -699,16 +707,24 @@ class TaskGraph:
         for t in range(self.num_tasks):
             task_coalitions.append(np.sum(x_ak[:,t]))
         print("task coalitions: ",task_coalitions)
+        info_dict['task coalitions'] = str(task_coalitions)
         o_akk = np.atleast_3d(np.reshape(o_akk,(self.num_robots,self.num_tasks+1, self.num_tasks)))
+        order_string = []
         for a in range(self.num_robots):
             for j in range(self.num_tasks):
                 for k in range(self.num_tasks):
                     if(o_akk[a,j+1,k]>0.99):
                         print("agent %d performs task %d before task %d" %(a,j,k))
-
+                        order_string.append("agent %d performs task %d before task %d" %(a,j,k))
+        info_dict['task order'] = order_string
         tasks_ordered = np.argsort(np.array(f_k))
+        time_string = []
         for t in tasks_ordered:
             print("Time ", f_k[t],": task %d completed by %d agents" % (t, task_coalitions[t]))
+            time_string.append("Time " + str(f_k[t]) + ": task %d completed by %d agents" % (t, task_coalitions[t]))
+        info_dict['task times'] = time_string
+        return info_dict
+
 
 
 def discretize_pairwise(max_val):
