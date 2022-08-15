@@ -176,6 +176,9 @@ class MRTA_XD():
     def sigmoid(self, flow, param):
         return param[0] / (1 + exp(-1 * param[1] * (flow - param[2])))
 
+    def sigmoid_b(self, flow, param):
+        return param[0] / (1 + exp(-1 * param[1] * (flow-param[2]))) - param[3]
+
     def dim_return(self, flow, param):
         return param[0] - param[2] * exp(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))

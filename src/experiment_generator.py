@@ -196,8 +196,8 @@ class ExperimentGenerator():
         taskgraph_args_exp['edges'] = edge_list
         taskgraph_args_exp['numrobots'] = 1
 
-        coalition_types_choices = ['sigmoid', 'dim_return', 'polynomial']
-        coalition_types_indices = np.random.randint(1,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
+        coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
+        coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
         # sample from coalition types available iteratively to make list of strings
         taskgraph_args_exp['coalition_types'] = [coalition_types_choices[coalition_types_indices[i]] for i in range(trial_num_nodes)]
 
@@ -206,8 +206,12 @@ class ExperimentGenerator():
         M = 3
         coalition_params = []
         for i in range(trial_num_nodes):
-            if taskgraph_args_exp['coalition_types'][i] == 'sigmoid':
-                raise NotImplementedError()
+            if taskgraph_args_exp['coalition_types'][i] == 'sigmoid_b':
+                w = 0.25+np.random.random()*0.5
+                k = np.random.randint(5,50)
+                p0 = float( M*(1+np.exp(-k)*np.exp(k*w)) * (1+np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)) )
+                p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
+                coalition_params.append([p0,w,k,p3])
             if taskgraph_args_exp['coalition_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
                 p0 = float(M/(1-np.exp(w)))
@@ -222,15 +226,19 @@ class ExperimentGenerator():
         taskgraph_args_exp['coalition_params'] = coalition_params
 
         # sample from dependency types available -- list of strings
-        influence_types_choices = ['sigmoid', 'dim_return']
-        influence_types_indices = np.random.randint(1,2,(num_edges,)) # TODO IMPLEMENT SIGMOID
+        influence_types_choices = ['sigmoid_b', 'dim_return']
+        influence_types_indices = np.random.randint(0,2,(num_edges,)) # TODO IMPLEMENT SIGMOID
         taskgraph_args_exp['dependency_types'] = [influence_types_choices[influence_types_indices[i]] for i in range(num_edges)]
 
         # sample corresponding parameters within some defined range to the types in the above list
         dependency_params = []
         for i in range(num_edges):
-            if taskgraph_args_exp['dependency_types'][i] == 'sigmoid':
-                raise NotImplementedError()
+            if taskgraph_args_exp['dependency_types'][i] == 'sigmoid_b':
+                w = 0.25+np.random.random()*5
+                k = np.random.randint(1,10)
+                p0 = float(M*(1+np.exp(k*w))/np.exp(k*w))
+                p3 = float(M/np.exp(k*w))
+                dependency_params.append([p0,w,k,p3])
             if taskgraph_args_exp['dependency_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
                 dependency_params.append([M,w,M])
