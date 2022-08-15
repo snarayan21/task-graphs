@@ -15,6 +15,7 @@ class ExperimentGenerator():
         exp_args = all_args['exp']
 
         self.num_trials = exp_args['num_trials']
+        self.run_ddp = exp_args['run_ddp']
 
         # create overall experiment data directory if it does not exist
         self.experiment_data_dir = pathlib.Path("experiment_data/")
@@ -29,9 +30,10 @@ class ExperimentGenerator():
         self.experiment_dir.mkdir(parents=True, exist_ok=False)
 
         # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
-        #self.num_layers = exp_args['num_layers']
-        #self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
+        self.num_layers = exp_args['num_layers']
+        self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
         self.num_nodes = 6
+
     def run_trials(self):
         """Runs all trials for the given experiment. Creates their directories, runs the DDP and baseline solution,
          and saves the results to a file in each directory. Also stores the results in the ExperimentGenerator for
@@ -74,7 +76,7 @@ class ExperimentGenerator():
             greedy_fin_time = time.time()
             greedy_elapsed_time = greedy_fin_time-start
             print("GREEDY SOLUTION FINISHED")
-            run_ddp = False
+            run_ddp = self.run_ddp
             if run_ddp:
                 #solve with ddp
                 task_graph.initialize_solver_ddp(**trial_args['ddp'])
@@ -131,6 +133,7 @@ class ExperimentGenerator():
             results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
             results_dict['greedy_solution'] = task_graph.last_greedy_solution
             results_dict['greedy_solution_time'] = greedy_elapsed_time
+            results_dict['greedy_makespan'] = task_graph.time_task_execution(task_graph.last_greedy_solution)[1][-1]
             results_dict['greedy_execution_times'] = task_graph.time_task_execution(task_graph.last_greedy_solution)
 
             if run_ddp:
@@ -148,6 +151,8 @@ class ExperimentGenerator():
             results_dict['minlp_makespan'] = task_graph.last_minlp_solution[-1]
             results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
 
+            results_dict['MINLP details'] = task_graph.translate_minlp_objective(task_graph.last_minlp_solution)
+
 
             results_dict_list.append(results_dict)
 
@@ -161,7 +166,7 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_a()
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
         num_edges = len(edge_list)
 
         #nx.draw(nx_task_graph)
@@ -373,7 +378,6 @@ class ExperimentGenerator():
         nx_task_graph.add_edges_from(edge_list)
         print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
         print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
-        breakpoint()
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
 
@@ -386,6 +390,45 @@ def main():
 
     experiment_generator = ExperimentGenerator(args)
     trial_args, results = experiment_generator.run_trials()
+
+    exp_num_tasks = [trial_args[i]['exp']['num_tasks'] for i in range(len(trial_args))]
+    total_rewards = [[],[],[]] # task graph, greedy, MINLP
+    makespan = [[],[],[]]
+    sol_time = [[],[],[]]
+    for i in range(len(results)):
+        result_dict = results[i]
+
+        total_rewards[0].append(result_dict['baseline_reward'])
+        makespan[0].append(result_dict['baseline_makespan'])
+        sol_time[0].append(result_dict['baseline_solution_time'])
+        total_rewards[1].append(result_dict['greedy_reward'])
+        makespan[1].append(result_dict['greedy_makespan'])
+        sol_time[1].append(result_dict['greedy_solution_time'])
+        total_rewards[2].append(result_dict['minlp_reward'])
+        makespan[2].append(result_dict['minlp_makespan'])
+        sol_time[2].append(result_dict['minlp_solution_time'])
+
+    # PLOT
+    fig, axs = plt.subplots(3,1,sharex=True, figsize=(6,9))
+    labels = ["Task Graph", "Greedy", "MINLP"]
+    for k in range(3):
+
+        axs[0].plot(total_rewards[k], label=labels[k])
+        axs[0].set_ylabel('Reward')
+        axs[0].set_ylim([0, 70])
+        axs[0].legend()
+
+        axs[1].plot(makespan[k], label=labels[k])
+        axs[1].set_ylabel('Makespan')
+        axs[1].legend()
+
+        axs[2].plot(sol_time[k], label=labels[k])
+        axs[2].set_ylabel('Solution Time')
+        axs[2].legend()
+
+    plt.savefig((experiment_generator.experiment_dir / 'exp_results.png').absolute())
+
+    plt.clf()   # clear plot for next iteration
 
 if __name__ == '__main__':
     main()
