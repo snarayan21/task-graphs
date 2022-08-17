@@ -83,6 +83,7 @@ class TaskGraph:
 
         #variables used for data logging
         self.last_baseline_solution = None
+        self.rounded_baseline_solution = None
         self.last_ddp_solution = None
         self.last_minlp_solution = None
         self.last_minlp_solution_val = None
@@ -163,6 +164,9 @@ class TaskGraph:
                     print(constraint_buffer)
                     status = minlp_obj.model.getStatus()
 
+                    if constraint_buffer>50:
+                        break
+
                 self.minlp_obj = minlp_obj
                 self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
             else:
@@ -230,6 +234,47 @@ class TaskGraph:
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
+        self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
+
+    def round_graph_solution(self, flows):
+        ordered_nodes = list(nx.topological_sort(self.task_graph))
+        flows_mult = flows*self.num_robots
+        rounded_flows = np.zeros_like(flows)
+
+        for curr_node in ordered_nodes[0:-1]:
+            out_edges = self.task_graph.out_edges(curr_node)
+            out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+            in_edges = list(self.task_graph.in_edges(curr_node))
+            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
+
+            out_flows = [flows_mult[i] for i in out_edge_inds]
+
+            # calculate total flow to be allotted
+            if curr_node == 0:
+                in_flow_exact = np.sum(out_flows)
+                in_flow = np.around(in_flow_exact)
+            else:
+                in_flows = [rounded_flows[i] for i in in_edge_inds]
+                in_flow = np.sum(in_flows)
+
+            # round out flows to nearest digit
+            candidate_out_flows = np.around(out_flows)
+
+            while (np.sum(candidate_out_flows) != in_flow):
+                diff = in_flow - np.sum(candidate_out_flows)
+                rounding_diffs = out_flows - candidate_out_flows
+                if diff >= 0:
+                    increase_ind = np.argmin(rounding_diffs)
+                    candidate_out_flows[increase_ind] = candidate_out_flows[increase_ind] + 1
+                else:
+                    decrease_ind = np.argmax(rounding_diffs)
+                    candidate_out_flows[decrease_ind] = candidate_out_flows[decrease_ind] - 1
+
+            #populate new flows into vector
+            for (f, i) in zip(candidate_out_flows, out_edge_inds):
+                rounded_flows[i] = f
+
+        return rounded_flows/self.num_robots
 
     def solve_graph_greedy(self):
         initial_flow = 1.0
@@ -249,7 +294,10 @@ class TaskGraph:
 
             # make cost function handle that takes in edge values and returns rewards
             def node_reward(f, arg_curr_node, arg_num_assigned_edges):
-                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                try:
+                    input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                except(ValueError):
+                    breakpoint()
                 rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
                 relevant_reward_inds = list(range(arg_curr_node+1))
                 for n in self.task_graph.neighbors(arg_curr_node):
@@ -725,11 +773,3 @@ class TaskGraph:
         info_dict['task times'] = time_string
         return info_dict
 
-
-
-def discretize_pairwise(max_val):
-    """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""
-    flow_a = np.arange(start=0, stop=max_val+0.1, step=0.1)
-    flow_b = max_val-flow_a
-    import pdb; pdb.set_trace()
-    return np.concatenate((np.expand_dims(flow_a,1),np.expand_dims(flow_b,1)),axis=1).tolist()

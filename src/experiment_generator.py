@@ -130,6 +130,9 @@ class ExperimentGenerator():
             results_dict['baseline_makespan'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1][-1]
             results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
+            results_dict['rounded_baseline_solution'] = task_graph.rounded_baseline_solution
+            results_dict['rounded_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.rounded_baseline_solution)
+
             results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
             results_dict['greedy_solution'] = task_graph.last_greedy_solution
             results_dict['greedy_solution_time'] = greedy_elapsed_time
@@ -194,7 +197,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['max_steps'] = 100
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
         taskgraph_args_exp['edges'] = edge_list
-        taskgraph_args_exp['numrobots'] = 1
+        taskgraph_args_exp['numrobots'] = 2
 
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
@@ -400,7 +403,7 @@ def main():
     trial_args, results = experiment_generator.run_trials()
 
     exp_num_tasks = [trial_args[i]['exp']['num_tasks'] for i in range(len(trial_args))]
-    total_rewards = [[],[],[]] # task graph, greedy, MINLP
+    total_rewards = [[],[],[],[]] # task graph, greedy, MINLP, rounded_task_graph
     makespan = [[],[],[]]
     sol_time = [[],[],[]]
     for i in range(len(results)):
@@ -415,16 +418,24 @@ def main():
         total_rewards[2].append(result_dict['minlp_reward'])
         makespan[2].append(result_dict['minlp_makespan'])
         sol_time[2].append(result_dict['minlp_solution_time'])
+        total_rewards[3].append(result_dict['rounded_baseline_reward'])
 
     # PLOT
-    fig, axs = plt.subplots(3,1,sharex=True, figsize=(6,9))
-    labels = ["Task Graph", "Greedy", "MINLP"]
-    for k in range(3):
-
+    fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,9))
+    labels = ["Task Graph", "Greedy", "MINLP", "Task Graph Discrete"]
+    for k in range(4):
         axs[0].plot(total_rewards[k], label=labels[k])
         axs[0].set_ylabel('Reward')
-        axs[0].set_ylim([0, 70])
+        axs[0].set_ylim([-5, 50])
         axs[0].legend()
+
+        rel_rewards = [total_rewards[k][i]/total_rewards[0][i] for i in range(len(total_rewards[0]))]
+        axs[3].plot(rel_rewards,label=labels[k])
+        axs[3].set_ylabel('Relative Reward')
+        axs[3].set_ylim([0.0, None])
+        axs[3].legend()
+
+    for k in range(3):
 
         axs[1].plot(makespan[k], label=labels[k])
         axs[1].set_ylabel('Makespan')
