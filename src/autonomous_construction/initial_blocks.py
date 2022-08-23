@@ -112,9 +112,9 @@ def plot_tower_graph(Gr, num_layers, tower_edges, tower_contact_edges, tower_int
     pos = myposdict
     nx.draw_networkx_nodes(Gr, pos)
     nx.draw_networkx_labels(Gr, pos)
-    nx.draw_networkx_edges(Gr, pos, edgelist=tower_edges, arrowstyle="->", edge_color="black", arrowsize=10)
-    nx.draw_networkx_edges(Gr, pos, edgelist=tower_interlayer_edges, arrowstyle="->", edge_color="lightgray", arrowsize=10)
-    nx.draw_networkx_edges(Gr, pos, edgelist=tower_contact_edges, arrowstyle="->", edge_color="red", arrowsize=10)
+    #nx.draw_networkx_edges(Gr, pos, edgelist=tower_edges, arrowstyle="->", edge_color="black", arrowsize=10)
+    nx.draw_networkx_edges(Gr, pos, edgelist=tower_interlayer_edges+tower_contact_edges+tower_edges, arrowstyle="->", edge_color="gray", arrowsize=10)
+    #nx.draw_networkx_edges(Gr, pos, edgelist=tower_contact_edges, arrowstyle="->", edge_color="red", arrowsize=10)
 
     if save:
         plt.savefig("./autonomous_construction/generated_examples/"+filename+"_graph.png")

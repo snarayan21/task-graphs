@@ -4,7 +4,7 @@ from taskgraph import TaskGraph
 from log_data import LogData
 import toml
 import argparse
-from draw_construction import graph_tower, flows_to_taskrobots
+from draw_construction import graph_tower, graph_tower_image, flows_to_taskrobots
 
 # NP main program
 def main():
@@ -48,7 +48,7 @@ def main():
         blocks = track_args["tower"]["blocks"]
         totrobots = 20
         taskrobots = flows_to_taskrobots(task_graph.last_ddp_solution, track_args['exp']["edges"], track_args['exp']["num_tasks"], totrobots)
-        graph_tower(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'], (args.cfg).split("/")[-1].split(".")[0])
+        graph_tower_image(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'], (args.cfg).split("/")[-1].split(".")[0])
 
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)

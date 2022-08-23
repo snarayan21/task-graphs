@@ -27,8 +27,8 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
     t_height = sum(layer_heights)
     t_width = block_info[0][-1][1]
     fig, ax = plt.subplots()
-    ax.set_xlim([0,int(t_height*1.1)])
-    ax.set_ylim([-1*(int(t_width*0.1)),int(t_width*1.1)])
+    ax.set_xlim([-1*int(t_width*0.1),int(t_width*1.1)])
+    ax.set_ylim([0,int(t_height*1.1)])
     full_blocks = []
     for j, layer in enumerate(block_info):
         layer_unpacked = [ b + [sum(layer_heights[:j]), layer_heights[j]] for b in layer ]
@@ -71,8 +71,8 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
 
         print("--------") """
         ax.clear()
-        ax.set_xlim([0,int(t_height*1.1)])
-        ax.set_ylim([-1*(int(t_width*0.1)),int(t_width*1.1)])
+        ax.set_xlim([-1*int(t_width*0.1),int(t_width*1.1)])
+        ax.set_ylim([0,int(t_height*1.1)])
         for j, event in enumerate(events[:i+1]):
             xstart, _, width, ystart, height = full_blocks[event[0]]
             if(event[2] == "s"):
@@ -110,6 +110,51 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
 
     anim = FuncAnimation(fig, animate, frames=int(len(events)), interval=1000, repeat = False)
     anim.save("./autonomous_construction/generated_examples/"+fname+".mp4", writer='ffmpeg',fps=1)
+    plt.show()
+
+def graph_tower_image(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions, fname):
+
+
+    def get_cmap(n, name='hsv'):
+        '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct 
+        RGB color; the keyword argument name must be a standard mpl colormap name.'''
+        return plt.cm.get_cmap(name, n+2)
+    
+    fracs = robots_to_fraction(totrobots, taskrobots)
+    events = start_finish_to_event_list(s, f)
+    print("eventlist", events)
+    numtasks = len(coalitions)
+    t_height = sum(layer_heights)
+    t_width = block_info[0][-1][1]
+    fig, axs = plt.subplots(2)
+    axs[0].set_xlim([-1*int(t_width*0.1),int(t_width*1.1)])
+    axs[0].set_ylim([0,int(t_height*1.1)])
+    axs[0].axes.xaxis.set_visible(False)
+    axs[0].axes.yaxis.set_visible(False)
+    axs[0].set_title("Block Tower")
+    full_blocks = []
+    for j, layer in enumerate(block_info):
+        layer_unpacked = [ b + [sum(layer_heights[:j]), layer_heights[j]] for b in layer ]
+        full_blocks = full_blocks + layer_unpacked
+    
+    cmap = get_cmap(len(full_blocks))
+
+    for i, block in enumerate(full_blocks):
+        xstart, _, width, ystart, height = block
+        axs[0].add_patch(patches.Rectangle((xstart, ystart), width, height, facecolor=cmap(i)))
+
+    sftimes = list(zip(s[1:-1], f[1:-1]))
+
+    for i,tasktime in enumerate(sftimes):
+        axs[1].barh(i,width=tasktime[1]-tasktime[0],left=tasktime[0], color=cmap(i))
+
+    axs[1].set_yticks(range(len(sftimes)))
+    axs[1].set_yticklabels([f'block {i+1}' for i in range(len(sftimes))])
+    axs[1].set_xlim(0, max(f))
+    axs[1].set_title("Tower Construction Schedule")
+    axs[1].set_xlabel("time")
+
+    plt.savefig("./autonomous_construction/generated_examples/"+fname+".png")
     plt.show()
 
 def flows_to_taskrobots(flows, edges, numtasks, numrobots):

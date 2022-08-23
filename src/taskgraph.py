@@ -3,7 +3,7 @@ from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
 from scipy.optimize import minimize, LinearConstraint
-import cyipopt
+#import cyipopt
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -13,7 +13,7 @@ from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
-from scipt_minlp import MRTA_XD
+#from scipt_minlp import MRTA_XD
 
 from autograd import grad
 
@@ -61,7 +61,7 @@ class TaskGraph:
                                 dependency_types=dependency_types,
                                 influence_agg_func_types=aggs)
 
-        self.minlp_obj = MRTA_XD(
+        """ self.minlp_obj = MRTA_XD(
             num_tasks=self.num_tasks,
             num_robots=self.num_robots,
             dependency_edges=edges,
@@ -73,7 +73,7 @@ class TaskGraph:
             reward_model=self.reward_model,
             task_graph = self.task_graph,
             task_times = self.task_times
-        )
+        ) """
 
         # variables using in the optimization
         self.var_flow = None
