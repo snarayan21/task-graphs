@@ -24,16 +24,23 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, task_times=None, scenario="test", adaptive=1):
-        self.scenario = scenario
-        self.adaptive = adaptive
+                 numrobots, task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
         self.max_steps = max_steps
         self.num_tasks = num_tasks
         self.num_robots = numrobots
+        self.minlp_time_constraint = minlp_time_constraint
+        self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
+
+        self.edges = edges
+        self.coalition_params = coalition_params
+        self.coalition_types = coalition_types
+        self.dependency_params = dependency_params
+        self.dependency_types = dependency_types
+        self.aggs = aggs
 
         if task_times is None:
             task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
@@ -61,19 +68,7 @@ class TaskGraph:
                                 dependency_types=dependency_types,
                                 influence_agg_func_types=aggs)
 
-        self.minlp_obj = MRTA_XD(
-            num_tasks=self.num_tasks,
-            num_robots=self.num_robots,
-            dependency_edges=edges,
-            coalition_params=coalition_params,
-            coalition_types=coalition_types,
-            dependency_params=dependency_params,
-            dependency_types=dependency_types,
-            influence_agg_func_types=aggs,
-            reward_model=self.reward_model,
-            task_graph = self.task_graph,
-            task_times = self.task_times
-        )
+        self.minlp_obj = self.initialize_minlp_obj()
 
         # variables using in the optimization
         self.var_flow = None
@@ -88,6 +83,7 @@ class TaskGraph:
 
         #variables used for data logging
         self.last_baseline_solution = None
+        self.rounded_baseline_solution = None
         self.last_ddp_solution = None
         self.last_minlp_solution = None
         self.last_minlp_solution_val = None
@@ -98,7 +94,21 @@ class TaskGraph:
         self.buffer_hist = None
         self.constraint_violation = None
 
-
+    def initialize_minlp_obj(self):
+        obj = MRTA_XD(
+            num_tasks=self.num_tasks,
+            num_robots=self.num_robots,
+            dependency_edges=self.edges,
+            coalition_params=self.coalition_params,
+            coalition_types=self.coalition_types,
+            dependency_params=self.dependency_params,
+            dependency_types=self.dependency_types,
+            influence_agg_func_types=self.aggs,
+            reward_model=self.reward_model,
+            task_graph=self.task_graph,
+            task_times=self.task_times
+        )
+        return obj
 
     def identity(self, f):
         """
@@ -106,39 +116,6 @@ class TaskGraph:
         :return:
         """
         return f
-
-
-
-    def update_reward_curves(self):
-        """
-        Simulates the "disturbance" by changing the reward curves directly
-        :return:
-        """
-        #get current coalition params from reward model estimate
-        self.coalition_params = self.reward_model_estimate.get_coalition_params()
-
-        if "test" in self.scenario:
-            # let's degrade task 2 first
-            if self.coalition_params[2][0] > 0.9:
-                self.delta = -0.05
-            if self.coalition_params[2][0] < 0.1:
-                self.delta = 0.05
-
-            self.coalition_params[2][0] = self.coalition_params[2][0] + self.delta
-        elif "farm" in self.scenario:
-            ######## TEST 1 (Break the symmetry between 1 and 3) ###############################
-            # let's degrade task 2 first
-
-
-            ######## TEST 2 (Make prep feeding task 7 infeasible) #######################
-            if self.coalition_params[7][0] > 0.9:
-                self.delta = -0.05
-            if self.coalition_params[7][0] < 0.1:
-                self.delta = 0.01
-
-            self.coalition_params[7][0] = self.coalition_params[7][0] + self.delta
-        #TODO: Implement the adaptive piece here
-        self.reward_model_estimate.update_coalition_params(self.coalition_params, mode="oracle")
 
     def initializeSolver(self):
         '''
@@ -168,8 +145,45 @@ class TaskGraph:
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
-        self.minlp_obj.model.optimize()
-        self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+
+        if self.minlp_time_constraint:
+            if self.last_baseline_solution is not None:
+                s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
+                constraint_time = np.max(finish_times)
+                status = ""
+                constraint_buffer = 0
+                while status != "optimal" and status != "timelimit":
+                    minlp_obj = self.initialize_minlp_obj()
+                    cons_list = []
+                    for k in range(self.num_tasks):
+                        cons_list.append(minlp_obj.model.addCons(minlp_obj.f_k[k] <= constraint_time+constraint_buffer))
+
+                    minlp_obj.model.optimize()
+
+                    constraint_buffer = constraint_buffer + 0.1
+                    print(constraint_buffer)
+                    status = minlp_obj.model.getStatus()
+
+                    if constraint_buffer>50:
+                        break
+
+                self.minlp_obj = minlp_obj
+                self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+            else:
+                raise(NotImplementedError, "MINLP solve must be called after baseline solve when time constraint is used")
+
+        if self.minlp_reward_constraint:
+            if self.last_baseline_solution is not None:
+                self.minlp_obj = self.initialize_minlp_obj()
+                constraint_reward = -1*self.reward_model.flow_cost(self.last_baseline_solution.x)
+                self.minlp_obj.model.addCons(self.minlp_obj.z >= constraint_reward)
+            else:
+                raise(NotImplementedError, "MINLP solve must be called after baseline solve when reward constraint is used")
+            self.minlp_obj.model.optimize()
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        if not self.minlp_time_constraint and not self.minlp_reward_constraint:
+            self.minlp_obj.model.optimize()
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
 
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
@@ -197,7 +211,7 @@ class TaskGraph:
                         if verbose:
                             print("Agent ", a, " performs task ", k, " and then task ", k_p)
         self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
-        self.translate_minlp_objective(self.last_minlp_solution)
+        info_dict = self.translate_minlp_objective(self.last_minlp_solution)
 
     def solve_graph_scipy(self):
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
@@ -220,6 +234,47 @@ class TaskGraph:
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
         print(scipy_result)
         self.last_baseline_solution = scipy_result
+        self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
+
+    def round_graph_solution(self, flows):
+        ordered_nodes = list(nx.topological_sort(self.task_graph))
+        flows_mult = flows*self.num_robots
+        rounded_flows = np.zeros_like(flows)
+
+        for curr_node in ordered_nodes[0:-1]:
+            out_edges = self.task_graph.out_edges(curr_node)
+            out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+            in_edges = list(self.task_graph.in_edges(curr_node))
+            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
+
+            out_flows = [flows_mult[i] for i in out_edge_inds]
+
+            # calculate total flow to be allotted
+            if curr_node == 0:
+                in_flow_exact = np.sum(out_flows)
+                in_flow = np.around(in_flow_exact)
+            else:
+                in_flows = [rounded_flows[i] for i in in_edge_inds]
+                in_flow = np.sum(in_flows)
+
+            # round out flows to nearest digit
+            candidate_out_flows = np.around(out_flows)
+
+            while (np.sum(candidate_out_flows) != in_flow):
+                diff = in_flow - np.sum(candidate_out_flows)
+                rounding_diffs = out_flows - candidate_out_flows
+                if diff >= 0:
+                    increase_ind = np.argmin(rounding_diffs)
+                    candidate_out_flows[increase_ind] = candidate_out_flows[increase_ind] + 1
+                else:
+                    decrease_ind = np.argmax(rounding_diffs)
+                    candidate_out_flows[decrease_ind] = candidate_out_flows[decrease_ind] - 1
+
+            #populate new flows into vector
+            for (f, i) in zip(candidate_out_flows, out_edge_inds):
+                rounded_flows[i] = f
+
+        return rounded_flows/self.num_robots
 
     def solve_graph_greedy(self):
         initial_flow = 1.0
@@ -239,7 +294,10 @@ class TaskGraph:
 
             # make cost function handle that takes in edge values and returns rewards
             def node_reward(f, arg_curr_node, arg_num_assigned_edges):
-                input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                try:
+                    input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
+                except(ValueError):
+                    breakpoint()
                 rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
                 relevant_reward_inds = list(range(arg_curr_node+1))
                 for n in self.task_graph.neighbors(arg_curr_node):
@@ -276,14 +334,16 @@ class TaskGraph:
             for i in range(max_iter):
                 # take gradient of cost function with respect to edge values
                 gradient_t = gradient_func(last_state,curr_node,num_assigned_edges)
-
+                if np.isnan(gradient_t).any():
+                    gradient_t = np.zeros_like(gradient_t)
+                    print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
                 # TODO: project gradient onto hyperplane that respects constraints
                 # FOR NOW: just normalize new state such that it is valid
 
                 # take a step along that vector direction
                 new_cand_state = last_state + dt*gradient_t
                 for k in range(num_edges):
-                    if new_cand_state[k] < 0:
+                    if new_cand_state[k] <= 0:
                         new_cand_state[k] = 0.00001
                 last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
 
@@ -291,6 +351,8 @@ class TaskGraph:
             # update self.last_greedy_solution
             for (edge_i, new_flow) in zip(out_edge_inds,last_state):
                 self.last_greedy_solution[edge_i] = new_flow
+                if np.isnan(new_flow):
+                    breakpoint()
             # continue to next node
             out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
             node_queue.extend(out_nbrs)
@@ -457,21 +519,28 @@ class TaskGraph:
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
-            #print(current_node)
-            #print(frontier_nodes)
-            #print(incoming_edges)
+            incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
+            # print(current_node)
+            # print(frontier_nodes)
+            # print(incoming_edges)
+            # print([flow[incoming_edge_inds[i]] for i in range(len(incoming_edges))])
             #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
             if len(incoming_edges) > 0:
-                #incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
-                if np.array([flow[e[0]]<=0.000001 for e in incoming_edges]).all():
+                #print("node: ", current_node, " incoming flow: ", )
+
+                if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
                     task_start_times[current_node] = 0.0
                 else:
-                    task_start_times[current_node] = max([task_finish_times[e[0]] for e in incoming_edges if (flow[e[0]]>0.000001)])
+                    try:
+                        task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
+                    except(ValueError):
+                        breakpoint()
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
             for n in self.task_graph.neighbors(current_node):
-                frontier_nodes.append(n)
+                if n not in frontier_nodes:
+                    frontier_nodes.append(n)
 
         return task_start_times, task_finish_times
 
@@ -671,11 +740,12 @@ class TaskGraph:
                     if oakk_np[a,k+1,k_p] == 1:
                         print("Agent ", a, " performs task ", k, " and then task ", k_p)
         minlp_objective = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
-        self.translate_minlp_objective(minlp_objective)
+        info_dict = self.translate_minlp_objective(minlp_objective)
         breakpoint()
         import pdb; pdb.set_trace()
 
     def translate_minlp_objective(self, x):
+        info_dict = {}
         x_ak, o_akk, z_ak, s_k, f_k = self.minlp_obj.partition_x(x)
         # x_ak organized by agent
         x_ak = np.reshape(np.array(x_ak), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a
@@ -685,21 +755,21 @@ class TaskGraph:
         for t in range(self.num_tasks):
             task_coalitions.append(np.sum(x_ak[:,t]))
         print("task coalitions: ",task_coalitions)
+        info_dict['task coalitions'] = str(task_coalitions)
         o_akk = np.atleast_3d(np.reshape(o_akk,(self.num_robots,self.num_tasks+1, self.num_tasks)))
+        order_string = []
         for a in range(self.num_robots):
             for j in range(self.num_tasks):
                 for k in range(self.num_tasks):
                     if(o_akk[a,j+1,k]>0.99):
                         print("agent %d performs task %d before task %d" %(a,j,k))
-
+                        order_string.append("agent %d performs task %d before task %d" %(a,j,k))
+        info_dict['task order'] = order_string
         tasks_ordered = np.argsort(np.array(f_k))
+        time_string = []
         for t in tasks_ordered:
             print("Time ", f_k[t],": task %d completed by %d agents" % (t, task_coalitions[t]))
+            time_string.append("Time " + str(f_k[t]) + ": task %d completed by %d agents" % (t, task_coalitions[t]))
+        info_dict['task times'] = time_string
+        return info_dict
 
-
-def discretize_pairwise(max_val):
-    """ Creates a list of pairs of flows. Each pair sums to max_val, and it is discretized by an interval of 0.1"""
-    flow_a = np.arange(start=0, stop=max_val+0.1, step=0.1)
-    flow_b = max_val-flow_a
-    import pdb; pdb.set_trace()
-    return np.concatenate((np.expand_dims(flow_a,1),np.expand_dims(flow_b,1)),axis=1).tolist()

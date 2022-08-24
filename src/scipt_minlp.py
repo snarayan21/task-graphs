@@ -1,5 +1,5 @@
 import cyipopt
-from pyscipopt import Model, exp, quicksum
+from pyscipopt import Model, exp, quicksum, quickprod
 import autograd.numpy as np
 from networkx import topological_sort
 from autograd import grad, jacobian
@@ -10,7 +10,7 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, reward_model, task_graph, task_times):
+                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, reward_model, task_graph, task_times, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -19,9 +19,11 @@ class MRTA_XD():
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
+        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
         self.task_times = task_times
+        self.time_limit = time_limit
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
             self.in_nbrs.append([n for n in self.task_graph.predecessors(curr_node)])
@@ -40,12 +42,15 @@ class MRTA_XD():
         self.node_order = list(topological_sort(task_graph))
 
         self.model = Model("MRTA_XD")
+        print("MODEL INITIALIZED")
         self.add_variables() # keep variables as lists, but use indexing array
-        z = self.model.addVar("z")
+        self.z = self.model.addVar("z")
         self.set_constraints()
-        self.model.addCons(z <= self.objective())
-        self.model.setObjective(z, sense='maximize')
-
+        print("CONSTRAINTS SET")
+        self.model.addCons(self.z <= self.objective())
+        print("CONSTRAINT OBJECTIVE SET")
+        self.model.setObjective(self.z, sense='maximize')
+        print("OBJECTIVE SET")
 
     def add_variables(self):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -53,7 +58,7 @@ class MRTA_XD():
         z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
         s_len = self.num_tasks
         f_len = self.num_tasks
-        time_ub = 1000 #set this to something sensible at some point
+        time_ub = self.time_limit #set this to something sensible at some point
         # add x_ak vars
         self.x_ak = [self.model.addVar("x_%d"%i, vtype="B") for i in range(x_len)] #add binary variables for x_ak
         self.o_akk = [self.model.addVar("o_%d"%i, vtype="B") for i in range(o_len)] #add binary variables for o_akk
@@ -81,7 +86,7 @@ class MRTA_XD():
             task_coalition_rewards.append(self.get_coalition(t,task_coalitions[t]))
         #print("coalitions: ", task_coalitions)
         #print("coalition func rewards: ",task_coalition_rewards)
-
+        print("COALITION REWARDS CALCULATED")
         task_influence_rewards = [None for _ in range(self.num_tasks)]
         task_influnce_agg = [None for _ in range(self.num_tasks)]
         task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
@@ -89,11 +94,16 @@ class MRTA_XD():
         #print(self.in_nbrs)
         for t in self.node_order:
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
+            if len(self.in_nbrs[t]) == 0 and self.coalition_influence_aggregator=='product':
+                task_influence_rewards[t] = [1.0]
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
-            task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+            if self.coalition_influence_aggregator == 'sum':
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+            if self.coalition_influence_aggregator == 'product':
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t] # TODO expand this to have more options than just sum
         #print("overall rewards: ", task_rewards)
-
-        return quicksum(task_rewards) - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
+        print("TASK REWARDS CALCULATED")
+        return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
 
 
     def set_constraints(self):
@@ -134,8 +144,9 @@ class MRTA_XD():
         for a in range(self.num_robots):
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
-                    print("Task ", k ," must precede task ", k_p)
-                    self.model.addCons((self.s_k[k_p]-self.f_k[k]) >= 0)
+                    #print("Task ", k ," must precede task ", k_p)
+                    is_task_completed = quickprod([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
+                    self.model.addCons(is_task_completed*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
         for a in range(self.num_robots):
@@ -171,6 +182,9 @@ class MRTA_XD():
     def sigmoid(self, flow, param):
         return param[0] / (1 + exp(-1 * param[1] * (flow - param[2])))
 
+    def sigmoid_b(self, flow, param):
+        return param[0] / (1 + exp(-1 * param[1] * (flow-param[2]))) - param[3]
+
     def dim_return(self, flow, param):
         return param[0] - param[2] * exp(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
@@ -178,6 +192,9 @@ class MRTA_XD():
     def polynomial(self, flow, param):
         val = quicksum([float(param[i])*flow**i for i in range(len(param))])
         return val
+
+    def null(self, flow, param):
+        return 0.0
 
     def influence_agg_and(self, deltas):
         return np.prod(np.array(deltas))
