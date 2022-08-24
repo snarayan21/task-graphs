@@ -16,6 +16,7 @@ class ExperimentGenerator():
 
         self.num_trials = exp_args['num_trials']
         self.run_ddp = exp_args['run_ddp']
+        self.coalition_influence_aggregator = exp_args['coalition_influence_aggregator']
 
         # create overall experiment data directory if it does not exist
         self.experiment_data_dir = pathlib.Path("experiment_data/")
@@ -125,6 +126,7 @@ class ExperimentGenerator():
             trial_arg_list.append(trial_args)
             results_dict = {}
             results_dict['baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
+            results_dict['baseline_task_rewards'] = -task_graph.reward_model._nodewise_optim_cost_function(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
             results_dict['baseline_makespan'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1][-1]
@@ -198,7 +200,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
         taskgraph_args_exp['edges'] = edge_list
         taskgraph_args_exp['numrobots'] = 2
-
+        taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
         # sample from coalition types available iteratively to make list of strings

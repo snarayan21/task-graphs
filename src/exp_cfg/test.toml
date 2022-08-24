@@ -4,6 +4,7 @@ num_trials = 5
 num_layers = 3
 num_layer_nodes_max = 2
 run_ddp = false
+coalition_influence_aggregator = 'sum'
 
 
 

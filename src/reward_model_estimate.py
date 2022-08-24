@@ -11,9 +11,9 @@ class RewardModelEstimate(RewardModel):
     """
 
     def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types):
+                 dependency_types, influence_agg_func_types, coalition_influence_aggregator):
         super().__init__(num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                         dependency_types, influence_agg_func_types)
+                         dependency_types, influence_agg_func_types, coalition_influence_aggregator)
 
     def update_coalition_params(self, data, mode='oracle'):
         """

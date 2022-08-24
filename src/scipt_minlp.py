@@ -10,7 +10,7 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, reward_model, task_graph, task_times, time_limit=1000):
+                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, reward_model, task_graph, task_times, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -19,6 +19,7 @@ class MRTA_XD():
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
+        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
         self.task_times = task_times
@@ -93,8 +94,13 @@ class MRTA_XD():
         #print(self.in_nbrs)
         for t in self.node_order:
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
+            if len(self.in_nbrs[t]) == 0 and self.coalition_influence_aggregator=='product':
+                task_influence_rewards[t] = [1.0]
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
-            task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+            if self.coalition_influence_aggregator == 'sum':
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+            if self.coalition_influence_aggregator == 'product':
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t] # TODO expand this to have more options than just sum
         #print("overall rewards: ", task_rewards)
         print("TASK REWARDS CALCULATED")
         return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
