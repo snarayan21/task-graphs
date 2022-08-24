@@ -24,10 +24,11 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
+                 numrobots, coalition_influence_aggregator='sum', task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
         self.max_steps = max_steps
         self.num_tasks = num_tasks
         self.num_robots = numrobots
+        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
@@ -57,7 +58,8 @@ class TaskGraph:
                                         coalition_types=coalition_types,
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
-                                        influence_agg_func_types=aggs)
+                                        influence_agg_func_types=aggs,
+                                        coalition_influence_aggregator=self.coalition_influence_aggregator)
 
         self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
                                 num_robots=self.num_robots,
@@ -66,7 +68,8 @@ class TaskGraph:
                                 coalition_types=coalition_types,
                                 dependency_params=dependency_params,
                                 dependency_types=dependency_types,
-                                influence_agg_func_types=aggs)
+                                influence_agg_func_types=aggs,
+                                coalition_influence_aggregator=self.coalition_influence_aggregator)
 
         self.minlp_obj = self.initialize_minlp_obj()
 
@@ -104,6 +107,7 @@ class TaskGraph:
             dependency_params=self.dependency_params,
             dependency_types=self.dependency_types,
             influence_agg_func_types=self.aggs,
+            coalition_influence_aggregator=self.coalition_influence_aggregator,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
             task_times=self.task_times
@@ -211,7 +215,7 @@ class TaskGraph:
                         if verbose:
                             print("Agent ", a, " performs task ", k, " and then task ", k_p)
         self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
-        info_dict = self.translate_minlp_objective(self.last_minlp_solution)
+        self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
 
     def solve_graph_scipy(self):
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
