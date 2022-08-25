@@ -239,7 +239,7 @@ class ExperimentGenerator():
                 k = np.random.randint(5,50)
                 p0 = float( M*(1+np.exp(-k)*np.exp(k*w)) * (1+np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)) )
                 p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
-                coalition_params.append([p0,w,k,p3])
+                coalition_params.append([p0,w,float(k),p3])
             if taskgraph_args_exp['coalition_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
                 p0 = float(M/(1-np.exp(w)))
@@ -249,7 +249,7 @@ class ExperimentGenerator():
                 w = 0.5+np.random.random()/2 # vertex value in [0.5,1]
                 p1 =  2*M/w
                 p2 = -M/(w**2)
-                coalition_params.append([0,p1,p2])
+                coalition_params.append([0.000,p1,p2])
 
         taskgraph_args_exp['coalition_params'] = coalition_params
 
@@ -266,10 +266,10 @@ class ExperimentGenerator():
                 k = np.random.randint(1,10)
                 p0 = float(M*(1+np.exp(k*w))/np.exp(k*w))
                 p3 = float(M/np.exp(k*w))
-                dependency_params.append([p0,w,k,p3])
+                dependency_params.append([p0,w,float(k),p3])
             if taskgraph_args_exp['dependency_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
-                dependency_params.append([M,w,M])
+                dependency_params.append([float(M),w,float(M)])
         taskgraph_args_exp['dependency_params'] = dependency_params
         # sample from available agg types -- probably all sum for now???
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
