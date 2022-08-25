@@ -33,7 +33,7 @@ class ExperimentGenerator():
         # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
         self.num_layers = exp_args['num_layers']
         self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
-        self.num_nodes = 6
+        #self.num_nodes = 6
 
     def run_trials(self):
         """Runs all trials for the given experiment. Creates their directories, runs the DDP and baseline solution,
@@ -132,6 +132,12 @@ class ExperimentGenerator():
             results_dict['baseline_makespan'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1][-1]
             results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
+            results_dict['pruned_baseline_solution'] = task_graph.pruned_baseline_solution.x
+            results_dict['pruned_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_baseline_solution.x)
+
+            results_dict['pruned_rounded_baseline_solution'] = task_graph.pruned_rounded_baseline_solution
+            results_dict['pruned_rounded_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_rounded_baseline_solution)
+
             results_dict['rounded_baseline_solution'] = task_graph.rounded_baseline_solution
             results_dict['rounded_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.rounded_baseline_solution)
 
@@ -199,7 +205,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['max_steps'] = 100
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
         taskgraph_args_exp['edges'] = edge_list
-        taskgraph_args_exp['numrobots'] = 2
+        taskgraph_args_exp['num_robots'] = 2
         taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID

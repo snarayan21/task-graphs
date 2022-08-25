@@ -23,11 +23,25 @@ import os
 class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
-    def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, coalition_influence_aggregator='sum', task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
+    def __init__(self,
+                 max_steps,
+                 num_tasks,
+                 edges,
+                 coalition_params,
+                 coalition_types,
+                 dependency_params,
+                 dependency_types,
+                 aggs,
+                 num_robots,
+                 coalition_influence_aggregator='sum',
+                 task_times=None,
+                 makespan_constraint=10000,
+                 minlp_time_constraint=False,
+                 minlp_reward_constraint=False):
+
         self.max_steps = max_steps
         self.num_tasks = num_tasks
-        self.num_robots = numrobots
+        self.num_robots = num_robots
         self.coalition_influence_aggregator = coalition_influence_aggregator
         self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
@@ -46,7 +60,7 @@ class TaskGraph:
         if task_times is None:
             task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
         self.task_times = task_times
-
+        self.makespan_constraint = makespan_constraint
         self.fig = None
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
@@ -71,7 +85,12 @@ class TaskGraph:
                                 influence_agg_func_types=aggs,
                                 coalition_influence_aggregator=self.coalition_influence_aggregator)
 
-        self.minlp_obj = self.initialize_minlp_obj()
+        self.pruned_graph_list = None
+        self.pruned_graph_edge_mappings_list = None
+        if self.makespan_constraint != 'cleared':
+            self.minlp_obj = self.initialize_minlp_obj()
+            self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
+
 
         # variables using in the optimization
         self.var_flow = None
@@ -113,6 +132,58 @@ class TaskGraph:
             task_times=self.task_times
         )
         return obj
+
+
+    def prune_graph(self):
+        start_times, finish_times = self.time_task_execution(np.ones((self.num_edges,)))
+        to_prune = finish_times > self.makespan_constraint
+        to_prune_indices = [i for i in range(self.num_tasks) if to_prune[i]]
+
+        # create list of pruned indices
+        pruned_tasks = [i for i in range(self.num_tasks) if not to_prune[i]]
+
+        pruned_edges = []         # create list of pruned edges
+        pruned_edges_mapping = []         # create mapping from original edges to pruned edges
+        for (edge, edge_ind) in zip(self.edges,range(len(self.edges))):
+            if edge[0] in pruned_tasks and edge[1] in pruned_tasks:
+                pruned_edges.append(edge)
+                pruned_edges_mapping.append(edge_ind)
+
+        # assemble new task graph args
+        coalition_types = []
+        coalition_params = []
+        aggs = []
+        for task in pruned_tasks:
+            coalition_types.append(self.coalition_types[task])
+            coalition_params.append(self.coalition_params[task])
+            aggs.append(self.aggs[task])
+
+        dependency_types = []
+        dependency_params = []
+        for edge_ind in range(len(pruned_edges)):
+            dependency_types.append(self.dependency_types[pruned_edges_mapping[edge_ind]])
+            dependency_params.append(self.dependency_params[pruned_edges_mapping[edge_ind]])
+
+        # create new task graph
+        new_graph = TaskGraph(
+                 max_steps=self.max_steps,
+                 num_tasks=len(pruned_tasks), # new quantity of tasks
+                 edges=pruned_edges, # new edges
+                 coalition_params=coalition_params,
+                 coalition_types=coalition_types,
+                 dependency_params=dependency_params,
+                 dependency_types=dependency_types,
+                 aggs=aggs,
+                 num_robots=self.num_robots,
+                 coalition_influence_aggregator=self.coalition_influence_aggregator,
+                 task_times=self.task_times,
+                 makespan_constraint='cleared', # specify cleared because it is already pruned
+                 minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized
+                 minlp_reward_constraint=False
+        )
+        breakpoint()
+
+        return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
         """
@@ -218,6 +289,37 @@ class TaskGraph:
         self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
 
     def solve_graph_scipy(self):
+
+        if self.makespan_constraint != 'cleared':
+            # graph instantiation not pruned -- solve pruned graphs and choose best solution
+            pruned_solutions = []
+            pruned_rewards = []
+            for g in self.pruned_graph_list:
+                g.solve_graph_scipy()
+                pruned_solutions.append(g.last_baseline_solution)
+                pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
+            best_solution_ind = np.argmax(np.array(pruned_rewards))
+            breakpoint()
+
+            best_flows_pruned = pruned_solutions[best_solution_ind].x
+            edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
+
+            # construct best solution from a pruned graph in terms of the current graph's edges
+            flows = np.zeros((len(self.edges),))
+            for edge_ind in range(len(best_flows_pruned)):
+                mapped_ind = edge_mappings[edge_ind]
+                flows[mapped_ind] = best_flows_pruned[edge_ind]
+
+            # save best solution in solution object
+            class CustomSolution:
+                pass
+
+            self.pruned_baseline_solution = CustomSolution
+            self.pruned_baseline_solution.x = flows
+            self.pruned_rounded_baseline_solution = self.round_graph_solution(self.pruned_baseline_solution.x)
+
+
+
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
         b = np.zeros(self.num_tasks)
 
