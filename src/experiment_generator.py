@@ -33,22 +33,39 @@ class ExperimentGenerator():
         # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
         self.num_layers = exp_args['num_layers']
         self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
-        #self.num_nodes = 6
+        self.from_file = exp_args['from_file']
+        self.filename = exp_args['filename']
+
 
     def run_trials(self):
         """Runs all trials for the given experiment. Creates their directories, runs the DDP and baseline solution,
          and saves the results to a file in each directory. Also stores the results in the ExperimentGenerator for
          convenience"""
 
+        if self.from_file:
+            filename_path = pathlib.Path(self.filename)
+            filename_list = []
+            if filename_path.is_file():
+                self.num_trials = 1
+                filename_list.append(self.filename)
+            else:
+                pathlist = filename_path.glob("*.toml")
+                self.num_trials = 0
+                for path in pathlist:
+                    print(path)
+                    filename_list.append(path.absolute())
+                    self.num_trials += 1
+
         trial_arg_list = []
         results_dict_list = []
 
 
         for trial_ind in range(self.num_trials):
-
-            # generate args for a trial within the parameters loaded into the experiment
-            trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
-
+            if not self.from_file:
+                # generate args for a trial within the parameters loaded into the experiment
+                trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
+            else:
+                 trial_args, nx_task_graph, node_pos = load_taskgraph_args(filename_list[trial_ind])
             #create directory for results
             dir_name = "trial_" + str(trial_ind)
             trial_dir = self.experiment_dir / dir_name
@@ -398,6 +415,20 @@ class ExperimentGenerator():
         print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
         print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
+
+
+def load_taskgraph_args(filename):
+
+    args = toml.load(filename)
+
+    num_tasks = int(args['exp']['num_tasks'])
+    edges = args['exp']['edges']
+
+    task_graph = nx.DiGraph()
+    task_graph.add_nodes_from(range(num_tasks))
+    task_graph.add_edges_from(edges)
+
+    return args, task_graph, None
 
 
 def main():

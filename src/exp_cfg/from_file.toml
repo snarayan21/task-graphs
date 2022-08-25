@@ -1,0 +1,11 @@
+[exp]
+exp_name = 'test'
+num_trials = 2
+buffer_size = [0.1, 0.2]
+num_layers = 3
+num_layer_nodes_max = 2
+run_ddp = false
+coalition_influence_aggregator = 'sum'
+
+from_file = true
+filename = 'cfg/generated_examples/test1.toml'
