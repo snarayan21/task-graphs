@@ -10,7 +10,8 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, reward_model, task_graph, task_times, time_limit=1000):
+                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, reward_model, task_graph,
+                 task_times, makespan_constraint, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -23,6 +24,7 @@ class MRTA_XD():
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
         self.task_times = task_times
+        self.makespan_constraint = makespan_constraint
         self.time_limit = time_limit
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
@@ -159,6 +161,11 @@ class MRTA_XD():
         # DURATION CONSTRAINTS
         for k in range(self.num_tasks):
             self.model.addCons(self.f_k[k] >= self.s_k[k] + self.task_times[k])
+
+        # MAKESPAN CONSTRAINTS
+        for k in range(self.num_tasks):
+            var_list = [self.x_ak[self.ind_x_ak[a,k+1]] for a in range(self.num_robots)]
+            self.model.addCons(quicksum(var_list)*(self.f_k[k]-self.makespan_constraint) <= 0)
 
     def partition_x(self, x):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task

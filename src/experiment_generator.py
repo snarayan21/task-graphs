@@ -184,7 +184,7 @@ class ExperimentGenerator():
             results_dict['minlp_reward'] = task_graph.last_minlp_solution_val
             results_dict['minlp_solution'] = task_graph.last_minlp_solution
             results_dict['minlp_solution_time'] = minlp_elapsed_time
-            results_dict['minlp_makespan'] = np.max(task_graph.last_minlp_solution[-task_graph.num_tasks:])
+            results_dict['minlp_makespan'] = task_graph.minlp_makespan
             results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
 
             results_dict['MINLP details'] = task_graph.translate_minlp_objective(task_graph.last_minlp_solution)

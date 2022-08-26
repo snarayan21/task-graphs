@@ -60,8 +60,15 @@ class TaskGraph:
         if task_times is None:
             task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
             task_times[0] = 0.0
-        self.task_times = task_times
-        self.makespan_constraint = makespan_constraint
+        self.task_times = np.array(task_times, dtype='float')
+
+        # makespan constriant is 'cleared' if we have already pruned the graph and are just using this object to
+        # calculate pruned solutions
+        # makespan constraint represents RELATIVE VALUE of total task duration (between 0 and 1) otherwise
+        if makespan_constraint == 'cleared':
+            self.makespan_constraint = makespan_constraint
+        else:
+            self.makespan_constraint = np.sum(self.task_times)*float(makespan_constraint)
         self.fig = None
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
@@ -90,11 +97,6 @@ class TaskGraph:
         self.pruned_graph_edge_mappings_list = None
         if self.makespan_constraint != 'cleared':
             self.minlp_obj = self.initialize_minlp_obj()
-            # add in the constraint if it is not cleared,
-            # self.minlp_obj will be overwritten if  minlp_time_constraint or minlp_reward_constraint are true
-            cons_list = []
-            for k in range(self.num_tasks):
-                cons_list.append(self.minlp_obj.model.addCons(self.minlp_obj.f_k[k] <= self.makespan_constraint))
             self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
 
 
@@ -135,7 +137,8 @@ class TaskGraph:
             coalition_influence_aggregator=self.coalition_influence_aggregator,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
-            task_times=self.task_times
+            task_times=self.task_times,
+            makespan_constraint=self.makespan_constraint
         )
         return obj
 
@@ -225,7 +228,7 @@ class TaskGraph:
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
-
+        """
         if self.minlp_time_constraint:
             if self.last_baseline_solution is not None:
                 s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
@@ -264,6 +267,9 @@ class TaskGraph:
         if not self.minlp_time_constraint and not self.minlp_reward_constraint:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        """
+        self.minlp_obj.model.optimize()
+        self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
 
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
@@ -292,6 +298,7 @@ class TaskGraph:
                             print("Agent ", a, " performs task ", k, " and then task ", k_p)
         self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
         self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
+        self.minlp_makespan = self.minlp_info_dict['makespan']
 
     def solve_graph_scipy(self):
 
@@ -911,5 +918,8 @@ class TaskGraph:
             print("Time ", f_k[t],": task %d completed by %d agents" % (t, task_coalitions[t]))
             time_string.append("Time " + str(f_k[t]) + ": task %d completed by %d agents" % (t, task_coalitions[t]))
         info_dict['task times'] = time_string
+
+        completed_task_times = [f_k[k] for k in range(self.num_tasks) if task_coalitions[k]>0.0]
+        info_dict['makespan'] = np.max(completed_task_times)
         return info_dict
 
