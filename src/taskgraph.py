@@ -331,6 +331,14 @@ class TaskGraph:
             self.pruned_rounded_baseline_solution = self.round_graph_solution(self.pruned_baseline_solution.x)
 
 
+        if self.num_tasks < 2:
+            # save best solution in solution object
+            class CustomSolution:
+                pass
+            self.last_baseline_solution = CustomSolution
+            self.last_baseline_solution.x = []
+            self.rounded_baseline_solution = []
+
 
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
         b = np.zeros(self.num_tasks)
@@ -426,12 +434,13 @@ class TaskGraph:
         node_queue = []
         curr_node = 0
 
+        # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. noe queue is messing things up maybe
         while True:
             out_edges = self.task_graph.out_edges(curr_node)
             out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
             in_edges = list(self.task_graph.in_edges(curr_node))
             in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
-            if num_assigned_edges == self.num_edges:
+            if num_assigned_edges >= self.num_edges:
                 break
             num_edges = len(out_edges)
 
@@ -440,13 +449,17 @@ class TaskGraph:
                 try:
                     input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
                 except(ValueError):
-                    breakpoint()
+                    print("GREEDY ERROR")
+                    return 0.0
                 rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
                 relevant_reward_inds = list(range(arg_curr_node+1))
                 for n in self.task_graph.neighbors(arg_curr_node):
                     relevant_reward_inds.append(n)
-
-                relevant_costs = rewards[relevant_reward_inds]
+                try:
+                    relevant_costs = rewards[relevant_reward_inds]
+                except(IndexError):
+                    print("GREEDY ERROR")
+                    return 0.0
                 return np.sum(relevant_costs)
 
             # get incoming flow quantity to node
