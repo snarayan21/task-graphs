@@ -89,18 +89,19 @@ class MRTA_XD():
         print("COALITION REWARDS CALCULATED")
         task_influence_rewards = [None for _ in range(self.num_tasks)]
         task_influnce_agg = [None for _ in range(self.num_tasks)]
-        task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
+        task_rewards = [None for _ in range(self.num_tasks)]
         #print(self.influence_func_handles)
         #print(self.in_nbrs)
-        for t in self.node_order:
+        task_rewards[0] = 0.0 #SEED TASK HAS ZERO REWARD
+        for t in self.node_order[1:]:
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
             if len(self.in_nbrs[t]) == 0 and self.coalition_influence_aggregator=='product':
                 task_influence_rewards[t] = [1.0]
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
             if self.coalition_influence_aggregator == 'sum':
-                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t]
             if self.coalition_influence_aggregator == 'product':
-                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t] # TODO expand this to have more options than just sum
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t]
         #print("overall rewards: ", task_rewards)
         print("TASK REWARDS CALCULATED")
         return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
