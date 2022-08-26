@@ -187,7 +187,7 @@ class TaskGraph:
                  minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized
                  minlp_reward_constraint=False
         )
-        breakpoint()
+
         return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
@@ -304,7 +304,7 @@ class TaskGraph:
                 pruned_solutions.append(g.last_baseline_solution)
                 pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
             best_solution_ind = np.argmax(np.array(pruned_rewards))
-            breakpoint()
+            #breakpoint()
 
             best_flows_pruned = pruned_solutions[best_solution_ind].x
             edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
@@ -331,9 +331,9 @@ class TaskGraph:
         # scipy version
         # equality flow constraint
         lb2 = np.zeros(self.num_tasks-2)
-        ub2 = np.zeros(self.num_tasks-2)
+        ub2 = np.ones(self.num_tasks-2)
         c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
-
+        breakpoint()
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
