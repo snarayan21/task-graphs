@@ -144,8 +144,8 @@ class MRTA_XD():
         for a in range(self.num_robots):
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
-                    #print("Task ", k ," must precede task ", k_p)
-                    is_task_completed = quickprod([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
+                    print("Task ", k ," must precede task ", k_p)
+                    is_task_completed = quicksum([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
                     self.model.addCons(is_task_completed*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
