@@ -165,6 +165,13 @@ class ExperimentGenerator():
             results_dict['greedy_makespan'] = np.max(task_graph.time_task_execution(task_graph.last_greedy_solution)[1])
             results_dict['greedy_execution_times'] = task_graph.time_task_execution(task_graph.last_greedy_solution)
 
+            results_dict['pruned_greedy_solution'] = task_graph.pruned_greedy_solution
+            results_dict['pruned_greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_greedy_solution)
+            results_dict['pruned_greedy_makespan'] = np.max(task_graph.time_task_execution(task_graph.pruned_greedy_solution)[1])
+
+            results_dict['pruned_rounded_greedy_solution'] = task_graph.pruned_rounded_greedy_solution
+            results_dict['pruned_rounded_greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_rounded_greedy_solution)
+
             if run_ddp:
                 results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
                 results_dict['ddp_solution'] = task_graph.last_ddp_solution
@@ -177,7 +184,7 @@ class ExperimentGenerator():
             results_dict['minlp_reward'] = task_graph.last_minlp_solution_val
             results_dict['minlp_solution'] = task_graph.last_minlp_solution
             results_dict['minlp_solution_time'] = minlp_elapsed_time
-            results_dict['minlp_makespan'] = task_graph.last_minlp_solution[-1]
+            results_dict['minlp_makespan'] = np.max(task_graph.last_minlp_solution[-task_graph.num_tasks:])
             results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
 
             results_dict['MINLP details'] = task_graph.translate_minlp_objective(task_graph.last_minlp_solution)

@@ -188,7 +188,6 @@ class TaskGraph:
                  minlp_reward_constraint=False
         )
         breakpoint()
-
         return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
@@ -343,7 +342,6 @@ class TaskGraph:
         # inequality constraint on beginning and ending flow
         c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
         constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
-        breakpoint()
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=constraints_tuple)
         print(scipy_result)
         self.last_baseline_solution = scipy_result
@@ -351,6 +349,7 @@ class TaskGraph:
 
     def round_graph_solution(self, flows):
         ordered_nodes = list(nx.topological_sort(self.task_graph))
+        #convert flows to units of whole agents
         flows_mult = flows*self.num_robots
         rounded_flows = np.zeros_like(flows)
 
@@ -373,13 +372,11 @@ class TaskGraph:
             # round out flows to nearest digit
             candidate_out_flows = np.around(out_flows)
 
-            while (np.sum(candidate_out_flows) != in_flow):
+            # if we rounded up too much and created more outflow than inflow:
+            while (np.sum(candidate_out_flows) > in_flow):
                 diff = in_flow - np.sum(candidate_out_flows)
                 rounding_diffs = out_flows - candidate_out_flows
-                if diff >= 0:
-                    increase_ind = np.argmin(rounding_diffs)
-                    candidate_out_flows[increase_ind] = candidate_out_flows[increase_ind] + 1
-                else:
+                if diff < 0:
                     decrease_ind = np.argmax(rounding_diffs)
                     candidate_out_flows[decrease_ind] = candidate_out_flows[decrease_ind] - 1
 
@@ -390,6 +387,32 @@ class TaskGraph:
         return rounded_flows/self.num_robots
 
     def solve_graph_greedy(self):
+
+        if self.makespan_constraint != 'cleared':
+            # graph instantiation not pruned -- solve pruned graphs and choose best solution
+            pruned_solutions = []
+            pruned_rewards = []
+            for g in self.pruned_graph_list:
+                g.solve_graph_greedy()
+                pruned_solutions.append(g.last_greedy_solution)
+                pruned_rewards.append(-g.reward_model.flow_cost(g.last_greedy_solution))
+            best_solution_ind = np.argmax(np.array(pruned_rewards))
+
+            best_flows_pruned = pruned_solutions[best_solution_ind]
+            edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
+
+            # construct best solution from a pruned graph in terms of the current graph's edges
+            flows = np.zeros((len(self.edges),))
+            for edge_ind in range(len(best_flows_pruned)):
+                mapped_ind = edge_mappings[edge_ind]
+                flows[mapped_ind] = best_flows_pruned[edge_ind]
+
+            # save best solution
+            self.pruned_greedy_solution = flows
+            self.pruned_rounded_greedy_solution = self.round_graph_solution(self.pruned_greedy_solution)
+
+
+
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
         num_assigned_edges = 0
