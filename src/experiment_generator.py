@@ -65,7 +65,7 @@ class ExperimentGenerator():
                 # generate args for a trial within the parameters loaded into the experiment
                 trial_args, nx_task_graph, node_pos = self.generate_taskgraph_args()
             else:
-                 trial_args, nx_task_graph, node_pos = load_taskgraph_args(filename_list[trial_ind])
+                trial_args, nx_task_graph, node_pos = load_taskgraph_args(filename_list[trial_ind])
             #create directory for results
             dir_name = "trial_" + str(trial_ind)
             trial_dir = self.experiment_dir / dir_name
@@ -195,6 +195,11 @@ class ExperimentGenerator():
             results_file = trial_dir / "results.toml"
             with open(results_file, "w") as f2:
                 toml.dump(results_dict,f2)
+
+            # overwrite args file with task times
+            trial_args['exp']['task_times'] = task_graph.task_times
+            with open(args_file, "w") as f:
+                toml.dump(trial_args,f)
 
         return trial_arg_list, results_dict_list
 

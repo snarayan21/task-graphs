@@ -333,7 +333,7 @@ class TaskGraph:
         lb2 = np.zeros(self.num_tasks-2)
         ub2 = np.ones(self.num_tasks-2)
         c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
-        breakpoint()
+
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
