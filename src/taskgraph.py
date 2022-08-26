@@ -58,7 +58,8 @@ class TaskGraph:
         self.aggs = aggs
 
         if task_times is None:
-            task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
+            task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
+            task_times[0] = 0.0
         self.task_times = task_times
         self.makespan_constraint = makespan_constraint
         self.fig = None
@@ -89,6 +90,11 @@ class TaskGraph:
         self.pruned_graph_edge_mappings_list = None
         if self.makespan_constraint != 'cleared':
             self.minlp_obj = self.initialize_minlp_obj()
+            # add in the constraint if it is not cleared,
+            # self.minlp_obj will be overwritten if  minlp_time_constraint or minlp_reward_constraint are true
+            cons_list = []
+            for k in range(self.num_tasks):
+                cons_list.append(self.minlp_obj.model.addCons(self.minlp_obj.f_k[k] <= self.makespan_constraint))
             self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
 
 
@@ -327,7 +333,7 @@ class TaskGraph:
         # equality flow constraint
         lb2 = np.zeros(self.num_tasks-2)
         ub2 = np.zeros(self.num_tasks-2)
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
 
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
@@ -336,8 +342,9 @@ class TaskGraph:
 
         # inequality constraint on beginning and ending flow
         c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
-        #import pdb; pdb.set_trace()
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
+        constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
+        breakpoint()
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=constraints_tuple)
         print(scipy_result)
         self.last_baseline_solution = scipy_result
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
@@ -622,6 +629,7 @@ class TaskGraph:
 
         nodelist = list(range(self.num_tasks))
         frontier_nodes.append(nodelist[0])
+        incomplete_nodes = []
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
@@ -636,6 +644,7 @@ class TaskGraph:
 
                 if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
                     task_start_times[current_node] = 0.0
+                    incomplete_nodes.append(current_node)
                 else:
                     try:
                         task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
@@ -648,6 +657,8 @@ class TaskGraph:
                 if n not in frontier_nodes:
                     frontier_nodes.append(n)
 
+        for node in incomplete_nodes:
+            task_finish_times[node] = 0.0
         return task_start_times, task_finish_times
 
 

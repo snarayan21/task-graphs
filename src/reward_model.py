@@ -51,8 +51,9 @@ class RewardModel:
         incoming_flow = self._compute_incoming_flow(f)
 
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
+        var_reward_mean[0] = 0.0
         if self.coalition_influence_aggregator == 'product':
-            var_reward_mean[0] = 1
+            var_reward_mean[0] = 1.0
         var_reward_stddev = np.zeros(self.num_tasks, dtype=object)
         var_reward = np.zeros(self.num_tasks, dtype=object)
 

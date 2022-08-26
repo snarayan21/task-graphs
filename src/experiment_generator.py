@@ -146,11 +146,12 @@ class ExperimentGenerator():
             results_dict['baseline_task_rewards'] = -task_graph.reward_model._nodewise_optim_cost_function(task_graph.last_baseline_solution.x)
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
-            results_dict['baseline_makespan'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1][-1]
+            results_dict['baseline_makespan'] = np.max(task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1])
             results_dict['baseline_execution_times'] = task_graph.time_task_execution(task_graph.last_baseline_solution.x)
 
             results_dict['pruned_baseline_solution'] = task_graph.pruned_baseline_solution.x
             results_dict['pruned_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_baseline_solution.x)
+            results_dict['pruned_baseline_makespan'] = np.max(task_graph.time_task_execution(task_graph.pruned_baseline_solution.x)[1])
 
             results_dict['pruned_rounded_baseline_solution'] = task_graph.pruned_rounded_baseline_solution
             results_dict['pruned_rounded_baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_rounded_baseline_solution)
@@ -161,7 +162,7 @@ class ExperimentGenerator():
             results_dict['greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_greedy_solution)
             results_dict['greedy_solution'] = task_graph.last_greedy_solution
             results_dict['greedy_solution_time'] = greedy_elapsed_time
-            results_dict['greedy_makespan'] = task_graph.time_task_execution(task_graph.last_greedy_solution)[1][-1]
+            results_dict['greedy_makespan'] = np.max(task_graph.time_task_execution(task_graph.last_greedy_solution)[1])
             results_dict['greedy_execution_times'] = task_graph.time_task_execution(task_graph.last_greedy_solution)
 
             if run_ddp:
