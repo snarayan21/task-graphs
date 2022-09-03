@@ -158,6 +158,13 @@ class TaskGraph:
                 pruned_edges.append(edge)
                 pruned_edges_mapping.append(edge_ind)
 
+        # rename edges according to new number of tasks
+        renamed_edges = []
+        for edge in pruned_edges:
+            node_out = pruned_tasks.index(edge[0])
+            node_in = pruned_tasks.index(edge[1])
+            renamed_edges.append((node_out,node_in))
+
         # assemble new task graph args
         coalition_types = []
         coalition_params = []
@@ -177,7 +184,7 @@ class TaskGraph:
         new_graph = TaskGraph(
                  max_steps=self.max_steps,
                  num_tasks=len(pruned_tasks), # new quantity of tasks
-                 edges=pruned_edges, # new edges
+                 edges=renamed_edges, # new edges
                  coalition_params=coalition_params,
                  coalition_types=coalition_types,
                  dependency_params=dependency_params,
@@ -307,7 +314,10 @@ class TaskGraph:
             pruned_solutions = []
             pruned_rewards = []
             for g in self.pruned_graph_list:
-                g.solve_graph_scipy()
+                try:
+                    g.solve_graph_scipy()
+                except(ValueError):
+                    breakpoint()
                 pruned_solutions.append(g.last_baseline_solution)
                 pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
             best_solution_ind = np.argmax(np.array(pruned_rewards))
@@ -354,11 +364,17 @@ class TaskGraph:
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
 
-        # inequality constraint on beginning and ending flow
+        # inequality constraint on beginning flow
         c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
+        init_val = 0.5
         constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=constraints_tuple)
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
         print(scipy_result)
+        if scipy_result.success == False:
+            breakpoint()
+            while scipy_result.success==False and init_val > 0:
+                scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
+                init_val = init_val - 0.1
         self.last_baseline_solution = scipy_result
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
 
@@ -933,6 +949,9 @@ class TaskGraph:
         info_dict['task times'] = time_string
 
         completed_task_times = [f_k[k] for k in range(self.num_tasks) if task_coalitions[k]>0.0]
-        info_dict['makespan'] = np.max(completed_task_times)
+        if len(completed_task_times) > 0:
+            info_dict['makespan'] = np.max(completed_task_times)
+        else:
+            info_dict['makespan'] = 0.0
         return info_dict
 
