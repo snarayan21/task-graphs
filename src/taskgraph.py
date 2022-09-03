@@ -448,16 +448,15 @@ class TaskGraph:
         self.last_greedy_solution = np.zeros((self.num_edges,))
         num_assigned_edges = 0
         node_queue = []
-        curr_node = 0
 
-        # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. noe queue is messing things up maybe
-        while True:
+        # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. node queue is messing things up maybe
+        ordered_nodes = list(nx.topological_sort(self.task_graph))
+
+        for curr_node in ordered_nodes:
             out_edges = self.task_graph.out_edges(curr_node)
             out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
             in_edges = list(self.task_graph.in_edges(curr_node))
             in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
-            if num_assigned_edges >= self.num_edges:
-                break
             num_edges = len(out_edges)
 
             # make cost function handle that takes in edge values and returns rewards
@@ -525,11 +524,6 @@ class TaskGraph:
                 self.last_greedy_solution[edge_i] = new_flow
                 if np.isnan(new_flow):
                     breakpoint()
-            # continue to next node
-            out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
-            node_queue.extend(out_nbrs)
-            curr_node = node_queue.pop(0)
-            num_assigned_edges += num_edges
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
