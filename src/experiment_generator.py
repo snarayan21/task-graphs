@@ -16,6 +16,8 @@ class ExperimentGenerator():
 
         self.num_trials = exp_args['num_trials']
         self.run_ddp = exp_args['run_ddp']
+        self.num_robots = exp_args['num_robots']
+        self.makespan_constraint = exp_args['makespan_constraint']
         self.coalition_influence_aggregator = exp_args['coalition_influence_aggregator']
 
         # create overall experiment data directory if it does not exist
@@ -143,7 +145,7 @@ class ExperimentGenerator():
             trial_arg_list.append(trial_args)
             results_dict = {}
             results_dict['baseline_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_baseline_solution.x)
-            results_dict['baseline_task_rewards'] = -task_graph.reward_model._nodewise_optim_cost_function(task_graph.last_baseline_solution.x)
+            results_dict['baseline_task_rewards'] = -np.array(task_graph.reward_model._nodewise_optim_cost_function(task_graph.last_baseline_solution.x), dtype='float')
             results_dict['baseline_solution'] = task_graph.last_baseline_solution
             results_dict['baseline_solution_time'] = baseline_elapsed_time
             results_dict['baseline_makespan'] = np.max(task_graph.time_task_execution(task_graph.last_baseline_solution.x)[1])
@@ -234,8 +236,9 @@ class ExperimentGenerator():
         taskgraph_args_exp = {}
         taskgraph_args_exp['max_steps'] = 100
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
-        taskgraph_args_exp['edges'] = edge_list
-        taskgraph_args_exp['num_robots'] = 2
+        taskgraph_args_exp['edges'] = [np.array(edge) for edge in edge_list]
+        taskgraph_args_exp['num_robots'] = self.num_robots
+        taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
         taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
