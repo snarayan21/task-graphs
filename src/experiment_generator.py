@@ -25,7 +25,10 @@ class ExperimentGenerator():
         self.experiment_data_dir.mkdir(parents=True, exist_ok=True)
 
         # get cleaned name for this experiment
-        experiment_dir_name = exp_args['exp_name']
+        if cmd_args.outputpath is not None:
+            experiment_dir_name = cmd_args.outputpath
+        else:
+            experiment_dir_name = exp_args['exp_name']
         experiment_dir_path, experiment_dir_name = clean_dir_name(experiment_dir_name, self.experiment_data_dir)
 
         # create cleaned experiment directory
@@ -451,6 +454,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the experiment toml file')
+    parser.add_argument('-outputpath', '-o', default=None, help='Base name of output experiment dir')
     #parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline flag to additionally solve graph with baseline optimizer')
     args = parser.parse_args()
 
