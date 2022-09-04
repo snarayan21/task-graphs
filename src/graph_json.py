@@ -27,7 +27,11 @@ def main():
         for var in dep_vars:
             var_list = []
             for trial in all_data[exp].keys():
-                var_list.append(all_data[exp][trial]['results'][var])
+                if float(all_data[exp][trial]['results']['baseline_makespan']) > 0:
+                    var_list.append(all_data[exp][trial]['results'][var])
+                else:
+                    print("REMOVING TRIAL ", trial, " no tasks were completed")
+                    all_data[exp].pop(trial)
             agg_data_dict[var] = var_list
         agg_data_dict_list.append(agg_data_dict)
 
@@ -48,22 +52,32 @@ def main():
     for agg_data_dict in agg_data_dict_list:
         for var in dep_vars:
             y_data_dict[(var+'_mean')].append(np.mean(np.array(agg_data_dict[var],dtype='float')))
+            for i in range(len(y_data_dict[(var+'_mean')])):
+                if not np.isfinite(y_data_dict[(var+'_mean')][i]) or np.isnan(y_data_dict[(var+'_mean')][i]):
+                    y_data_dict[(var+'_mean')][i] = -1000000000000.0
             y_data_dict[(var+'_std')].append(np.std(np.array(agg_data_dict[var],dtype='float')))
+            for i in range(len(y_data_dict[(var+'_std')])):
+                if not np.isfinite(y_data_dict[(var+'_std')][i]) or np.isnan(y_data_dict[(var+'_std')][i]):
+                    y_data_dict[(var+'_std')][i] = -1000000000000.0
 
     num_plots = 2
     fig, axs = plt.subplots(num_plots,1,sharex=True,figsize=(6,4*num_plots))
     legend_list = ['FLOW', 'GREEDY', 'MINLP']
+    linestyles = ['-', '--', '-.']
     colors = ['blue','green','red']
-    ylims = [[0,30],[-.5,8]]
     for ax_id in range(num_plots):
+        max_mean = 0.0
         for d in range(3):
             mean = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_mean')])
+            if np.max(mean) > max_mean:
+                max_mean = np.max(mean)
             #axs[ax_id].plot(x_list, mean, label=legend_list[d],color=colors[d])
             std = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_std')])
-            axs[ax_id].errorbar(x_list, mean, yerr=std, label=legend_list[d],color=colors[d])
+            axs[ax_id].errorbar(x_list, mean, yerr=std, label=legend_list[d],color=colors[d],elinewidth=1, capsize=2, linestyle=linestyles[d],linewidth=2)
             #axs[ax_id].fill_between(x_list, mean+std, mean-std, color=colors[d], alpha=0.2)
-            axs[ax_id].set_ylim(ylims[ax_id])
             axs[ax_id].legend()
+        ylims = [[0,1.1*max_mean],[-.5,1.1*max_mean]]
+        axs[ax_id].set_ylim(ylims[ax_id])
 
     plt.show()
 if __name__ == '__main__':
