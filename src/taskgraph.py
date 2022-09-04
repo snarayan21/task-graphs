@@ -371,7 +371,6 @@ class TaskGraph:
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
         print(scipy_result)
         if scipy_result.success == False:
-            breakpoint()
             while scipy_result.success==False and init_val > 0:
                 scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
                 init_val = init_val - 0.1
@@ -446,84 +445,89 @@ class TaskGraph:
 
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
-        num_assigned_edges = 0
-        node_queue = []
 
         # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. node queue is messing things up maybe
         ordered_nodes = list(nx.topological_sort(self.task_graph))
-
-        for curr_node in ordered_nodes:
+        print(ordered_nodes)
+        for curr_node in ordered_nodes[:-1]:
             out_edges = self.task_graph.out_edges(curr_node)
-            out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
-            in_edges = list(self.task_graph.in_edges(curr_node))
-            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
-            num_edges = len(out_edges)
-
-            # make cost function handle that takes in edge values and returns rewards
-            def node_reward(f, arg_curr_node, arg_num_assigned_edges):
-                try:
-                    input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
-                except(ValueError):
-                    print("GREEDY ERROR")
-                    return 0.0
-                rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
-                relevant_reward_inds = list(range(arg_curr_node+1))
-                for n in self.task_graph.neighbors(arg_curr_node):
-                    relevant_reward_inds.append(n)
-                try:
-                    relevant_costs = rewards[relevant_reward_inds]
-                except(IndexError):
-                    print("GREEDY ERROR")
-                    return 0.0
-                return np.sum(relevant_costs)
-
-            # get incoming flow quantity to node
-            incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
-            if curr_node == 0:
-                incoming_flow = 1.0
-            #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
-
-            # use random sampling to find a good initial state
-            candidate_flows = []
-            cand_flow_rewards = []
-            n_samples = 50
-            for n in range(n_samples):
-                cand_flow = np.random.rand(num_edges)
-                cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
-                candidate_flows.append(cand_flow)
-                cand_flow_rewards.append(node_reward(cand_flow,curr_node,num_assigned_edges))
-
-            #find best initial state NOTE: finding max reward
-            best_ind = np.argmax(np.array(cand_flow_rewards))
-            best_init_state = candidate_flows[best_ind]
-            gradient_func = grad(node_reward,0)
-
-            # GRADIENT DESCENT
-            max_iter = 50
-            dt = 0.1
-            last_state = best_init_state
-            for i in range(max_iter):
-                # take gradient of cost function with respect to edge values
-                gradient_t = gradient_func(last_state,curr_node,num_assigned_edges)
-                if np.isnan(gradient_t).any():
-                    gradient_t = np.zeros_like(gradient_t)
-                    print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
-                # TODO: project gradient onto hyperplane that respects constraints
-                # FOR NOW: just normalize new state such that it is valid
-
-                # take a step along that vector direction
-                new_cand_state = last_state + dt*gradient_t
-                for k in range(num_edges):
-                    if new_cand_state[k] <= 0:
-                        new_cand_state[k] = 0.00001
-                last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
-
-
-            # update self.last_greedy_solution
-            for (edge_i, new_flow) in zip(out_edge_inds,last_state):
-                self.last_greedy_solution[edge_i] = new_flow
-                if np.isnan(new_flow):
+            if len(out_edges) > 0:
+                out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+                in_edges = list(self.task_graph.in_edges(curr_node))
+                in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
+                num_edges = len(out_edges)
+                if num_edges == 0:
                     breakpoint()
+                # make cost function handle that takes in edge values and returns rewards
+                def node_reward(f, out_edge_inds, out_neighbors):
+                    sort_mapping = np.argsort(out_edge_inds)
+                    last_ind = -1
+                    arrays_list = []
+                    for mapping_ind in sort_mapping:
+                        out_edge_ind = out_edge_inds[mapping_ind]
+                        if last_ind + 1 != out_edge_ind:
+                            arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:out_edge_ind]))
+                            print(last_ind +1, out_edge_ind)
+                        arrays_list.append(np.atleast_1d(f[mapping_ind]))
+                        last_ind = out_edge_ind
+                    if last_ind != self.num_edges-1:
+                        arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:]))
+
+                    print("input flow inds: ", out_edge_inds, "\n input flow cands: ", f, "\n before: ", self.last_greedy_solution)
+                    print('arrays_list: ',arrays_list)
+                    input_flows = np.concatenate(arrays_list)
+                    print( "\n after: ", input_flows)
+                    rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
+                    relevant_costs = np.array(rewards[out_neighbors])
+                    return np.sum(relevant_costs)
+
+                # get incoming flow quantity to node
+                incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
+                if curr_node == 0:
+                    incoming_flow = 1.0
+                #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
+
+                # use random sampling to find a good initial state
+                candidate_flows = []
+                cand_flow_rewards = []
+                n_samples = 50
+                for n in range(n_samples):
+                    cand_flow = np.random.rand(num_edges)
+                    cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
+                    candidate_flows.append(cand_flow)
+                    cand_flow_rewards.append(node_reward(cand_flow,out_edge_inds,[edge[1] for edge in out_edges]))
+
+                #find best initial state NOTE: finding max reward
+                best_ind = np.argmax(np.array(cand_flow_rewards))
+                best_init_state = candidate_flows[best_ind]
+                gradient_func = grad(node_reward,0)
+
+                # GRADIENT DESCENT
+                max_iter = 50
+                dt = 0.1
+                last_state = best_init_state
+                for i in range(max_iter):
+                    # take gradient of cost function with respect to edge values
+                    gradient_t = gradient_func(last_state, out_edge_inds, [edge[1] for edge in out_edges])
+                    if np.isnan(gradient_t).any():
+                        gradient_t = np.zeros_like(gradient_t)
+                        print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
+                    # TODO: project gradient onto hyperplane that respects constraints
+                    # FOR NOW: just normalize new state such that it is valid
+
+                    # take a step along that vector direction
+                    new_cand_state = last_state + dt*gradient_t
+                    for k in range(num_edges):
+                        if new_cand_state[k] <= 0:
+                            new_cand_state[k] = 0.00001
+                    last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
+
+
+                # update self.last_greedy_solution
+                for (edge_i, new_flow) in zip(out_edge_inds,last_state):
+                    self.last_greedy_solution[edge_i] = new_flow
+                    if np.isnan(new_flow):
+                        breakpoint()
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
