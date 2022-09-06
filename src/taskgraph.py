@@ -275,7 +275,20 @@ class TaskGraph:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         """
+        self.minlp_obj.model.setParam('limits/time', 100)
         self.minlp_obj.model.optimize()
+        status = self.minlp_obj.model.getStatus()
+        if status != "optimal" and status != "timelimit":
+            x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+            o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
+            z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
+            s_len = self.num_tasks
+            f_len = self.num_tasks
+            self.last_minlp_solution_val = 0.0
+            self.last_minlp_solution = np.zeros((x_len+o_len+z_len+s_len+f_len,))
+            self.minlp_makespan = 0.0
+            return
+
         self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
 
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
@@ -405,13 +418,18 @@ class TaskGraph:
             # if we rounded up too much and created more outflow than inflow:
             while (np.sum(candidate_out_flows) > in_flow):
                 diff = in_flow - np.sum(candidate_out_flows)
-                rounding_diffs = out_flows - candidate_out_flows
+                rounding_diffs = candidate_out_flows - out_flows
+                for i in range(len(rounding_diffs)):
+                    if candidate_out_flows[i] == 0.0:
+                        rounding_diffs[i] = -10000000
                 if diff < 0:
                     decrease_ind = np.argmax(rounding_diffs)
                     candidate_out_flows[decrease_ind] = candidate_out_flows[decrease_ind] - 1
 
             #populate new flows into vector
             for (f, i) in zip(candidate_out_flows, out_edge_inds):
+                if f < 0.0:
+                    breakpoint()
                 rounded_flows[i] = f
 
         return rounded_flows/self.num_robots
@@ -448,7 +466,7 @@ class TaskGraph:
 
         # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. node queue is messing things up maybe
         ordered_nodes = list(nx.topological_sort(self.task_graph))
-        print(ordered_nodes)
+
         for curr_node in ordered_nodes[:-1]:
             out_edges = self.task_graph.out_edges(curr_node)
             if len(out_edges) > 0:
@@ -467,16 +485,15 @@ class TaskGraph:
                         out_edge_ind = out_edge_inds[mapping_ind]
                         if last_ind + 1 != out_edge_ind:
                             arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:out_edge_ind]))
-                            print(last_ind +1, out_edge_ind)
                         arrays_list.append(np.atleast_1d(f[mapping_ind]))
                         last_ind = out_edge_ind
                     if last_ind != self.num_edges-1:
                         arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:]))
 
-                    print("input flow inds: ", out_edge_inds, "\n input flow cands: ", f, "\n before: ", self.last_greedy_solution)
-                    print('arrays_list: ',arrays_list)
+                    #print("input flow inds: ", out_edge_inds, "\n input flow cands: ", f, "\n before: ", self.last_greedy_solution)
+                    #print('arrays_list: ',arrays_list)
                     input_flows = np.concatenate(arrays_list)
-                    print( "\n after: ", input_flows)
+                    #print( "\n after: ", input_flows)
                     rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
                     relevant_costs = np.array(rewards[out_neighbors])
                     return np.sum(relevant_costs)
