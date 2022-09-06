@@ -38,6 +38,10 @@ class ExperimentGenerator():
         # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
         self.num_layers = exp_args['num_layers']
         self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
+        if 'num_nodes' in exp_args.keys():
+            self.num_nodes = exp_args['num_nodes']
+        else:
+            self.num_nodes = None
         self.from_file = exp_args['from_file']
         self.filename = exp_args['filename']
 
@@ -177,6 +181,8 @@ class ExperimentGenerator():
             results_dict['pruned_rounded_greedy_solution'] = task_graph.pruned_rounded_greedy_solution
             results_dict['pruned_rounded_greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_rounded_greedy_solution)
 
+            if np.isinf(np.array(results_dict['pruned_rounded_greedy_reward'],results_dict['pruned_rounded_baseline_reward'])).any():
+                breakpoint()
             if run_ddp:
                 results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
                 results_dict['ddp_solution'] = task_graph.last_ddp_solution
@@ -244,7 +250,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
         taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
-        coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,)) # TODO IMPLEMENT SIGMOID
+        coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,))
         # sample from coalition types available iteratively to make list of strings
         taskgraph_args_exp['coalition_types'] = [coalition_types_choices[coalition_types_indices[i]] for i in range(trial_num_nodes)]
 
@@ -258,7 +264,7 @@ class ExperimentGenerator():
                 k = np.random.randint(5,50)
                 p0 = float( M*(1+np.exp(-k)*np.exp(k*w)) * (1+np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)) )
                 p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
-                coalition_params.append([p0,w,float(k),p3])
+                coalition_params.append([p0,float(k),w,p3])
             if taskgraph_args_exp['coalition_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
                 p0 = float(M/(1-np.exp(w)))
@@ -285,7 +291,7 @@ class ExperimentGenerator():
                 k = np.random.randint(1,10)
                 p0 = float(M*(1+np.exp(k*w))/np.exp(k*w))
                 p3 = float(M/np.exp(k*w))
-                dependency_params.append([p0,w,float(k),p3])
+                dependency_params.append([p0,float(k),w,p3])
             if taskgraph_args_exp['dependency_types'][i] == 'dim_return':
                 w = np.random.random()*10+0.5
                 dependency_params.append([float(M),w,float(M)])
@@ -367,72 +373,80 @@ class ExperimentGenerator():
     def generate_graph_topology_b(self):
         num_layers = self.num_layers
         num_layer_nodes_max = self.num_layer_nodes_max #must be > 1
+        require_precise_nodes = self.num_nodes is not None
+        precise_nodes_condition = False
+        while not precise_nodes_condition:
+            nx_task_graph = nx.DiGraph()
+            node_list = [0]
+            edge_list = []  # list of edges in form (x,y)
+            old_layer = [0]
+            frontiers_list = []
 
-        nx_task_graph = nx.DiGraph()
-        node_list = [0]
-        edge_list = []  # list of edges in form (x,y)
-        old_layer = [0]
-        frontiers_list = []
+            cur_layer = 0  # current number of nodes in the graph
+            cur_node = 1
+            #layer 0
+            for node in range(np.random.randint(1, num_layer_nodes_max+1)):
+                node_list.append(cur_node)
+                old_layer.append(cur_node)
+                edge_list.append((0, cur_node))
+                cur_node += 1
 
-        cur_layer = 0  # current number of nodes in the graph
-        cur_node = 1
-        #layer 0
-        for node in range(np.random.randint(1, num_layer_nodes_max+1)):
-            node_list.append(cur_node)
-            old_layer.append(cur_node)
-            edge_list.append((0, cur_node))
-            cur_node += 1
+            frontiers_list.append([0])
+            frontiers_list.append(old_layer[1:])
 
-        frontiers_list.append([0])
-        frontiers_list.append(old_layer[1:])
+            for layer in range(1,num_layers):
+                #generate 1 to num_layer_nodes_max nodes for new layer
+                new_layer_size = np.random.randint(1, num_layer_nodes_max+1)
+                new_layer = np.arange(cur_node,cur_node + new_layer_size)
+                for new_node in new_layer:
+                    node_list.append(new_node)
 
-        for layer in range(1,num_layers):
-            #generate 1 to num_layer_nodes_max nodes for new layer
-            new_layer_size = np.random.randint(1, num_layer_nodes_max+1)
-            new_layer = np.arange(cur_node,cur_node + new_layer_size)
-            for new_node in new_layer:
-                node_list.append(new_node)
+                #generate connection from old layer to new layer
+                #   guarantees all old_layer nodes are connected to 1+ nodes in new layer
+                connected_new_nodes = np.array([])
+                for old_node in old_layer:
+                    #TODO :
+                    """connections can be changed to control the complexity of the graph.
+                    Options include limiting num_connections, sampling num_connections
+                    non-uniformly (e.g., more likely to have only one connection), or 
+                    choosing connection in a manner that considers all of old layer rather
+                    than on a node by node basis. (None of these methods are implemented yet)
+                    """
+                    num_edges = np.random.randint(1,new_layer_size+1) #from old_node
+                    edge_destinations = np.random.choice(new_layer, num_edges, replace=False)
+                    connected_new_nodes = np.append(connected_new_nodes, edge_destinations)
+                    for edge_destination in edge_destinations:
+                        edge_list.append((int(old_node), int(edge_destination)))
 
-            #generate connection from old layer to new layer
-            #   guarantees all old_layer nodes are connected to 1+ nodes in new layer
-            connected_new_nodes = np.array([])
-            for old_node in old_layer:
-                #TODO :
-                """connections can be changed to control the complexity of the graph.
-                Options include limiting num_connections, sampling num_connections
-                non-uniformly (e.g., more likely to have only one connection), or 
-                choosing connection in a manner that considers all of old layer rather
-                than on a node by node basis. (None of these methods are implemented yet)
-                """
-                num_edges = np.random.randint(1,new_layer_size+1) #from old_node
-                edge_destinations = np.random.choice(new_layer, num_edges, replace=False)
-                connected_new_nodes = np.append(connected_new_nodes, edge_destinations)
-                for edge_destination in edge_destinations:
-                    edge_list.append((int(old_node), int(edge_destination)))
+                #check if new layer nodes all have connected, if not, connect to earlier nodes
+                unconnected_new_nodes = np.setdiff1d(new_layer, np.unique(connected_new_nodes).astype(int))
+                for node in unconnected_new_nodes:
+                    edge_origin = np.random.choice(np.arange(cur_node))
+                    edge_list.append((int(edge_origin), node))
 
-            #check if new layer nodes all have connected, if not, connect to earlier nodes
-            unconnected_new_nodes = np.setdiff1d(new_layer, np.unique(connected_new_nodes).astype(int))
-            for node in unconnected_new_nodes:
-                edge_origin = np.random.choice(np.arange(cur_node))
-                edge_list.append((int(edge_origin), node))
+                cur_node = cur_node + new_layer_size
+                old_layer = new_layer
+                frontiers_list.append(old_layer)
 
-            cur_node = cur_node + new_layer_size
-            old_layer = new_layer
-            frontiers_list.append(old_layer)
+            # terminate all frontier nodes into the sink node
+            sink = cur_node
+            node_list.append(sink)
+            frontiers_list.append([sink])
+            for node in old_layer:
+                edge_list.append((int(node), sink))
 
-        # terminate all frontier nodes into the sink node
-        sink = cur_node
-        node_list.append(sink)
-        frontiers_list.append([sink])
-        for node in old_layer:
-            edge_list.append((int(node), sink))
+            num_edges = len(edge_list)
+            trial_num_nodes = len(node_list)
+            nx_task_graph.add_nodes_from(node_list)
+            nx_task_graph.add_edges_from(edge_list)
+            print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
+            print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
 
-        num_edges = len(edge_list)
-        trial_num_nodes = len(node_list)
-        nx_task_graph.add_nodes_from(node_list)
-        nx_task_graph.add_edges_from(edge_list)
-        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
-        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
+            if require_precise_nodes:
+                precise_nodes_condition = trial_num_nodes == self.num_nodes
+            else:
+                precise_nodes_condition = True
+
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
 
@@ -485,7 +499,7 @@ def main():
     for k in range(4):
         axs[0].plot(total_rewards[k], label=labels[k])
         axs[0].set_ylabel('Reward')
-        axs[0].set_ylim([-5, 50])
+        axs[0].set_ylim([-5, None])
         axs[0].legend()
 
         rel_rewards = [total_rewards[k][i]/total_rewards[0][i] for i in range(len(total_rewards[0]))]
