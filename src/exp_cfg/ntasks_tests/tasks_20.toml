@@ -1,9 +1,10 @@
 [exp]
-exp_name = 'makespan_06_exp'
+exp_name = 'tasks_20_exp'
 num_trials = 5
-num_layers = 4
-num_robots = 4
-num_layer_nodes_max = 2
+num_layers = 7
+num_robots = 2
+num_layer_nodes_max = 4
+num_nodes = 20
 run_ddp = false
 coalition_influence_aggregator = 'sum'
 makespan_constraint = 0.6

@@ -2,7 +2,7 @@
 exp_name = 'makespan_10_exp'
 num_trials = 5
 num_layers = 4
-num_robots = 2
+num_robots = 4
 num_layer_nodes_max = 2
 run_ddp = false
 coalition_influence_aggregator = 'sum'
