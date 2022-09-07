@@ -34,6 +34,7 @@ class TaskGraph:
                  aggs,
                  num_robots,
                  coalition_influence_aggregator='sum',
+                 nodewise_coalition_influence_agg_list = None,
                  task_times=None,
                  makespan_constraint=10000,
                  minlp_time_constraint=False,
@@ -43,6 +44,10 @@ class TaskGraph:
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.coalition_influence_aggregator = coalition_influence_aggregator
+        if nodewise_coalition_influence_agg_list is None:
+            self.nodewise_coalition_influence_agg_list = [self.coalition_influence_aggregator for _ in range(self.num_tasks)]
+        else:
+            self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
@@ -81,17 +86,19 @@ class TaskGraph:
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs,
-                                        coalition_influence_aggregator=self.coalition_influence_aggregator)
+                                        coalition_influence_aggregator=self.coalition_influence_aggregator,
+                                        nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
-        self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
-                                num_robots=self.num_robots,
-                                task_graph=self.task_graph,
-                                coalition_params=coalition_params,
-                                coalition_types=coalition_types,
-                                dependency_params=dependency_params,
-                                dependency_types=dependency_types,
-                                influence_agg_func_types=aggs,
-                                coalition_influence_aggregator=self.coalition_influence_aggregator)
+        # self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
+        #                         num_robots=self.num_robots,
+        #                         task_graph=self.task_graph,
+        #                         coalition_params=coalition_params,
+        #                         coalition_types=coalition_types,
+        #                         dependency_params=dependency_params,
+        #                         dependency_types=dependency_types,
+        #                         influence_agg_func_types=aggs,
+        #                         coalition_influence_aggregator=self.coalition_influence_aggregator,
+        #                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None
@@ -135,6 +142,7 @@ class TaskGraph:
             dependency_types=self.dependency_types,
             influence_agg_func_types=self.aggs,
             coalition_influence_aggregator=self.coalition_influence_aggregator,
+            nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
             task_times=self.task_times,
@@ -192,6 +200,7 @@ class TaskGraph:
                  aggs=aggs,
                  num_robots=self.num_robots,
                  coalition_influence_aggregator=self.coalition_influence_aggregator,
+                 nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
                  task_times=self.task_times,
                  makespan_constraint='cleared', # specify cleared because it is already pruned
                  minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized

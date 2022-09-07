@@ -16,9 +16,16 @@ class ExperimentGenerator():
 
         self.num_trials = exp_args['num_trials']
         self.run_ddp = exp_args['run_ddp']
-        self.num_robots = exp_args['num_robots']
-        self.makespan_constraint = exp_args['makespan_constraint']
+        if 'num_robots' in exp_args.keys():
+            self.num_robots = exp_args['num_robots']
+        else:
+            self.num_robots = 4
+        if 'makespan_constraint' in exp_args.keys():
+            self.makespan_constraint = exp_args['makespan_constraint']
+        else:
+            self.makespan_constraint = 1.0
         self.coalition_influence_aggregator = exp_args['coalition_influence_aggregator']
+        self.nodewise_coalition_influence_agg_list = None # nodewise list of individual coalition influence aggregation functions ('sum' or 'product')
 
         # create overall experiment data directory if it does not exist
         self.experiment_data_dir = pathlib.Path("experiment_data/")
@@ -249,6 +256,19 @@ class ExperimentGenerator():
         taskgraph_args_exp['num_robots'] = self.num_robots
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
         taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
+        if self.coalition_influence_aggregator == 'sum':
+            self.nodewise_coalition_influence_agg_list = ['sum' for _ in range(trial_num_nodes)]
+        elif self.coalition_influence_aggregator == 'product':
+            self.nodewise_coalition_influence_agg_list = ['product' for _ in range(trial_num_nodes)]
+        elif self.coalition_influence_aggregator == 'mix':
+            rand_inds = np.random.choice([0,1], size=trial_num_nodes)
+            choices = ['sum','product']
+            self.nodewise_coalition_influence_agg_list = [choices[rand_inds[i]] for i in range(trial_num_nodes)]
+        else:
+            raise(NotImplementedError())
+        taskgraph_args_exp['nodewise_coalition_influence_agg_list'] = self.nodewise_coalition_influence_agg_list
+
+
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,))
         # sample from coalition types available iteratively to make list of strings
