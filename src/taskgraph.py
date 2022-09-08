@@ -284,7 +284,8 @@ class TaskGraph:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         """
-        self.minlp_obj.model.setParam('limits/time', 100)
+        self.minlp_timeout = 300
+        self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
         self.minlp_obj.model.optimize()
         status = self.minlp_obj.model.getStatus()
         if status != "optimal" and status != "timelimit":
