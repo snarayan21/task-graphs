@@ -29,7 +29,7 @@ def main():
         for var in dep_vars:
             var_list = []
             for trial in all_data[exp].keys():
-                if float(all_data[exp][trial]['results']['baseline_makespan']) > 0:
+                if float(all_data[exp][trial]['results']['pruned_baseline_makespan']) > 0:
                     var_list.append(all_data[exp][trial]['results'][var])
                 else:
                     if not (exp, trial) in trials_to_delete:
@@ -71,7 +71,7 @@ def main():
                     y_data_dict[(var+'_std')][i] = -1000000000000.0
 
     num_plots = 2
-    fig, axs = plt.subplots(num_plots,1,figsize=(6,5*num_plots))
+    fig, axs = plt.subplots(1,num_plots,figsize=(5*num_plots,4.5))
     legend_list = ['FLOW', 'GREEDY', 'MINLP']
     linestyles = ['-', '--', '-.']
     colors = ['blue','green','red']
