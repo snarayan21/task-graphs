@@ -2,7 +2,7 @@
 max_steps = 100
 edges = [ [ 0, 1,], [ 0, 2,], [ 0, 3,], [ 0, 4,], [ 1, 5,], [ 1, 6,], [ 2, 5,], [ 2, 6,], [ 3, 5,], [ 3, 6,], [ 4, 5,], [ 4, 6,], [ 5, 7,], [ 5, 8,], [ 6, 7,], [ 6, 8,], [ 7, 9,], [ 7, 10,], [ 8, 9,], [ 8, 10,], [ 9, 11,], [ 10, 11,],]
 num_tasks = 12
-numrobots = 4
+num_robots = 4
 coalition_types = [ "null", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "polynomial",]
 coalition_params = [ [ 0, 0, 0,], [ 31.77777777777778, 10.0, 0.31777777777777777,], [ 12.0, 10.0, 0.12,], [ 24.22222222222222, 10.0, 0.24222222222222223,], [ 32.0, 10.0, 0.32,], [ 12.88888888888889, 10.0, 0.1288888888888889,], [ 10.222222222222223, 10.0, 0.10222222222222223,], [ 34.0, 10.0, 0.34,], [ 29.11111111111111, 10.0, 0.2911111111111111,], [ 22.63456790123457, 10.0, 0.22634567901234567,], [ 36.47901234567901, 10.0, 0.3647901234567901,], [ 0.0, 1.0, 0.0,],]
 dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]

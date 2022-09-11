@@ -2,12 +2,13 @@
 max_steps = 100
 edges = [ [ 0, 1,], [ 0, 2,], [ 0, 3,], [ 1, 4,], [ 1, 5,], [ 2, 4,], [ 2, 5,], [ 3, 4,], [ 3, 5,], [ 4, 6,], [ 5, 6,], [ 6, 7,],]
 num_tasks = 8
-numrobots = 4
+num_robots = 4
 coalition_types = [ "null", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "polynomial",]
 coalition_params = [ [ 0, 0, 0,], [ 30.857142857142854, 10.0, 0.30857142857142855,], [ 14.571428571428571, 10.0, 0.1457142857142857,], [ 54.57142857142857, 10.0, 0.5457142857142857,], [ 37.244897959183675, 10.0, 0.37244897959183676,], [ 32.39795918367347, 10.0, 0.3239795918367347,], [ 35.05102040816326, 10.0, 0.35051020408163264,], [ 0.0, 1.0, 0.0,],]
 dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
 dependency_params = [ [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,],]
 aggs = [ "or", "or", "or", "or", "or", "or", "or", "or",]
+coalition_influence_aggregator = 'sum'
 
 [ddp]
 constraint_type = "qp"
