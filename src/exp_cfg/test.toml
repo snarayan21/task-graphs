@@ -7,4 +7,5 @@ run_ddp = false
 coalition_influence_aggregator = 'sum'
 
 
-
+from_file = false
+filename = ''

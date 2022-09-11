@@ -1,4 +1,4 @@
-EXP_NAME=makespan_9_5b
+EXP_NAME=makespan_9_9_mix_600t
 
 #set -x
 #trap read debug

@@ -1,6 +1,8 @@
 [exp]
-exp_name = 'autonomous_construction'
+exp_name = 'test'
 num_trials = 2
+num_robots = 2
+makespan_constraint = 0.4
 buffer_size = [0.1, 0.2]
 num_layers = 3
 num_layer_nodes_max = 2
@@ -8,4 +10,4 @@ run_ddp = false
 coalition_influence_aggregator = 'sum'
 
 from_file = true
-filename = 'autonomous_construction/generated_examples/w600_l3_1.toml'
+filename = 'exp_cfg/makespan_tests/'

@@ -6,7 +6,7 @@ num_robots = 10
 num_layer_nodes_max = 3
 num_nodes = 10
 run_ddp = false
-coalition_influence_aggregator = 'sum'
+coalition_influence_aggregator = 'mix'
 makespan_constraint = 0.6
 
 
