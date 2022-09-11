@@ -47,8 +47,10 @@ def main():
         heights = track_args["tower"]["heights"]
         blocks = track_args["tower"]["blocks"]
         totrobots = 20
-        taskrobots = flows_to_taskrobots(task_graph.last_ddp_solution, track_args['exp']["edges"], track_args['exp']["num_tasks"], totrobots)
-        graph_tower_image(s, f, totrobots, taskrobots, heights, blocks, track_args['exp']['coalition_params'], (args.cfg).split("/")[-1].split(".")[0])
+        flows_taskrobots = flows_to_taskrobots(task_graph.last_flow_solution, track_args['exp']["edges"], track_args['exp']["num_tasks"], totrobots)
+        minlp_taskrobots = task_graph.last_minlp_solution
+        graph_tower_image(s, f, totrobots, flows_taskrobots, heights, blocks, track_args['exp']['coalition_params'], ((args.cfg).split("/")[-1].split(".")[0])+"flows")
+        graph_tower_image(s, f, totrobots, minlp_taskrobots, heights, blocks, track_args['exp']['coalition_params'], ((args.cfg).split("/")[-1].split(".")[0])+"minlp")
 
     print('DDP solution: ')
     print(task_graph.last_ddp_solution)
