@@ -7,6 +7,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import pathlib
 
 class ExperimentGenerator():
 
@@ -35,11 +36,25 @@ class ExperimentGenerator():
         self.experiment_data_dir = pathlib.Path("experiment_data/")
         self.experiment_data_dir.mkdir(parents=True, exist_ok=True)
 
+        # store whether we are running experiment from specific exp file or generating a new one
+        self.from_file = exp_args['from_file']
+        if cmd_args.inputargs is not None:
+            self.filename = cmd_args.inputargs
+        else:
+            self.filename = exp_args['filename']
+
         # get cleaned name for this experiment
         if cmd_args.outputpath is not None:
             experiment_dir_name = cmd_args.outputpath
         else:
-            experiment_dir_name = exp_args['exp_name']
+            if 'exp_name' in exp_args.keys():
+                experiment_dir_name = exp_args['exp_name']
+            elif self.from_file:
+                exp_path = pathlib.Path(self.filename)
+                experiment_dir_name = exp_path.name.replace(".toml", "_exp")
+                breakpoint()
+            else:
+                raise NotImplementedError("must provide experiment name or load experiment from file")
         experiment_dir_path, experiment_dir_name = clean_dir_name(experiment_dir_name, self.experiment_data_dir)
 
         # create cleaned experiment directory
@@ -53,8 +68,6 @@ class ExperimentGenerator():
             self.num_nodes = exp_args['num_nodes']
         else:
             self.num_nodes = None
-        self.from_file = exp_args['from_file']
-        self.filename = exp_args['filename']
 
 
     def run_trials(self):
@@ -502,6 +515,7 @@ def main():
     parser = argparse.ArgumentParser(description='Do a whole experiment.')
     parser.add_argument('-cfg', default=None, help='Specify path to the experiment toml file')
     parser.add_argument('-outputpath', '-o', default=None, help='Base name of output experiment dir')
+    parser.add_argument('-inputargs', default=None, help='Specify filepath of an existing args.toml file to use input task graph instead of generating a random task graph')
     #parser.add_argument('-baseline', '-b', action='store_true', default=False, help='include -baseline flag to additionally solve graph with baseline optimizer')
     args = parser.parse_args()
 

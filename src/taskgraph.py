@@ -288,7 +288,7 @@ class TaskGraph:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         """
-        self.minlp_timeout = 600
+        self.minlp_timeout = 1
         self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
         self.minlp_obj.model.optimize()
         status = self.minlp_obj.model.getStatus()
