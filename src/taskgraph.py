@@ -38,7 +38,8 @@ class TaskGraph:
                  task_times=None,
                  makespan_constraint=10000,
                  minlp_time_constraint=False,
-                 minlp_reward_constraint=False):
+                 minlp_reward_constraint=False,
+                 run_minlp=True):
 
         self.max_steps = max_steps
         self.num_tasks = num_tasks
@@ -61,6 +62,8 @@ class TaskGraph:
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.aggs = aggs
+
+        self.run_minlp = run_minlp
 
         if task_times is None:
             task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
@@ -103,7 +106,8 @@ class TaskGraph:
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None
         if self.makespan_constraint != 'cleared':
-            self.minlp_obj = self.initialize_minlp_obj()
+            if self.run_minlp:
+                self.minlp_obj = self.initialize_minlp_obj()
             self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
 
 
@@ -284,11 +288,15 @@ class TaskGraph:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         """
-        self.minlp_timeout = 300
+        self.minlp_timeout = 600
         self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
         self.minlp_obj.model.optimize()
         status = self.minlp_obj.model.getStatus()
-        if status != "optimal" and status != "timelimit":
+        try:
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        except:
+
+        #if status != "optimal" and status != "timelimit":
             x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
             o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
             z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
@@ -297,9 +305,17 @@ class TaskGraph:
             self.last_minlp_solution_val = 0.0
             self.last_minlp_solution = np.zeros((x_len+o_len+z_len+s_len+f_len,))
             self.minlp_makespan = 0.0
+            self.minlp_dual_bound = self.minlp_obj.model.getDualbound()
+            self.minlp_primal_bound = 1000000000
+            self.minlp_gap = 1000000000
+            self.minlp_obj_limit = 1000000000
             return
 
-        self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+
+        self.minlp_dual_bound = self.minlp_obj.model.getDualbound()
+        self.minlp_primal_bound = self.minlp_obj.model.getPrimalbound()
+        self.minlp_gap = self.minlp_obj.model.getGap()
+        self.minlp_obj_limit = self.minlp_obj.model.getObjlimit()
 
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
@@ -330,6 +346,20 @@ class TaskGraph:
         self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
         self.minlp_makespan = self.minlp_info_dict['makespan']
 
+    def solve_graph_minlp_dummy(self):
+        x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+        o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
+        z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
+        s_len = self.num_tasks
+        f_len = self.num_tasks
+        self.last_minlp_solution_val = 0.0
+        self.last_minlp_solution = np.zeros((x_len+o_len+z_len+s_len+f_len,))
+        self.minlp_makespan = 0.0
+        self.minlp_dual_bound = 1000000000
+        self.minlp_primal_bound = 1000000000
+        self.minlp_gap = 1000000000
+        self.minlp_obj_limit = 1000000000
+
     def solve_graph_scipy(self):
 
         if self.makespan_constraint != 'cleared':
@@ -340,7 +370,12 @@ class TaskGraph:
                 try:
                     g.solve_graph_scipy()
                 except(ValueError):
-                    breakpoint()
+                    class CustomSolution:
+                        pass
+                    g.last_baseline_solution = CustomSolution
+                    g.last_baseline_solution.x = np.zeros((self.num_edges,))
+
+
                 pruned_solutions.append(g.last_baseline_solution)
                 pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
             best_solution_ind = np.argmax(np.array(pruned_rewards))
@@ -394,7 +429,8 @@ class TaskGraph:
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
         print(scipy_result)
         if scipy_result.success == False:
-            while scipy_result.success==False and init_val > 0:
+            while scipy_result.success==False and init_val >= 0:
+                print("Re-init scipy with val ", init_val)
                 scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
                 init_val = init_val - 0.1
         self.last_baseline_solution = scipy_result
@@ -439,7 +475,7 @@ class TaskGraph:
             #populate new flows into vector
             for (f, i) in zip(candidate_out_flows, out_edge_inds):
                 if f < 0.0:
-                    breakpoint()
+                    pass
                 rounded_flows[i] = f
 
         return rounded_flows/self.num_robots
