@@ -16,6 +16,10 @@ class ExperimentGenerator():
 
         self.num_trials = exp_args['num_trials']
         self.run_ddp = exp_args['run_ddp']
+        if 'run_minlp' in exp_args.keys():
+            self.run_minlp = exp_args['run_minlp']
+        else:
+            self.run_minlp = True
         if 'num_robots' in exp_args.keys():
             self.num_robots = exp_args['num_robots']
         else:
@@ -130,7 +134,10 @@ class ExperimentGenerator():
                 baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
 
             #solve minlp
-            task_graph.solve_graph_minlp()
+            if self.run_minlp:
+                task_graph.solve_graph_minlp()
+            else:
+                task_graph.solve_graph_minlp_dummy()
             minlp_fin_time = time.time()
             minlp_elapsed_time = minlp_fin_time - baseline_fin_time
             print("MINLP SOLUTION FINISHED")
@@ -189,7 +196,8 @@ class ExperimentGenerator():
             results_dict['pruned_rounded_greedy_reward'] = -task_graph.reward_model.flow_cost(task_graph.pruned_rounded_greedy_solution)
 
             if np.isinf(np.array(results_dict['pruned_rounded_greedy_reward'],results_dict['pruned_rounded_baseline_reward'])).any():
-                breakpoint()
+                pass
+                #breakpoint()
             if run_ddp:
                 results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
                 results_dict['ddp_solution'] = task_graph.last_ddp_solution
@@ -204,8 +212,13 @@ class ExperimentGenerator():
             results_dict['minlp_solution_time'] = minlp_elapsed_time
             results_dict['minlp_makespan'] = task_graph.minlp_makespan
             results_dict['minlp_execution_times'] = task_graph.last_minlp_solution[-trial_args['exp']['num_tasks']:]
+            results_dict['minlp_primal_bound'] = task_graph.minlp_primal_bound
+            results_dict['minlp_dual_bound'] = task_graph.minlp_dual_bound
+            results_dict['minlp_gap'] = task_graph.minlp_gap
+            results_dict['minlp_obj_limit'] = task_graph.minlp_obj_limit
 
-            results_dict['MINLP details'] = task_graph.translate_minlp_objective(task_graph.last_minlp_solution)
+            if self.run_minlp:
+                results_dict['MINLP details'] = task_graph.translate_minlp_objective(task_graph.last_minlp_solution)
 
 
             results_dict_list.append(results_dict)
@@ -320,7 +333,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
         taskgraph_args_exp['minlp_time_constraint'] = True #TODO make this a parameter
-
+        taskgraph_args_exp['run_minlp'] = self.run_minlp
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp',
                                  'constraint_buffer': 'soft', #None or 'soft' or 'hard'
@@ -502,10 +515,10 @@ def main():
     for i in range(len(results)):
         result_dict = results[i]
 
-        total_rewards[0].append(result_dict['baseline_reward'])
+        total_rewards[0].append(result_dict['pruned_rounded_baseline_reward'])
         makespan[0].append(result_dict['baseline_makespan'])
         sol_time[0].append(result_dict['baseline_solution_time'])
-        total_rewards[1].append(result_dict['greedy_reward'])
+        total_rewards[1].append(result_dict['pruned_rounded_greedy_reward'])
         makespan[1].append(result_dict['greedy_makespan'])
         sol_time[1].append(result_dict['greedy_solution_time'])
         total_rewards[2].append(result_dict['minlp_reward'])
