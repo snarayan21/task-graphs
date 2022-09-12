@@ -112,7 +112,7 @@ def graph_tower(s, f, totrobots, taskrobots, layer_heights, block_info, coalitio
     anim.save("./autonomous_construction/generated_examples/"+fname+".mp4", writer='ffmpeg',fps=1)
     plt.show()
 
-def graph_tower_image(s, f, totrobots, taskrobots, layer_heights, block_info, coalitions, fname):
+def graph_tower_image(s, f, layer_heights, block_info, coalitions, fname):
 
 
     def get_cmap(n, name='hsv'):
@@ -120,7 +120,6 @@ def graph_tower_image(s, f, totrobots, taskrobots, layer_heights, block_info, co
         RGB color; the keyword argument name must be a standard mpl colormap name.'''
         return plt.cm.get_cmap(name, n+2)
     
-    fracs = robots_to_fraction(totrobots, taskrobots)
     events = start_finish_to_event_list(s, f)
     print("eventlist", events)
     numtasks = len(coalitions)
