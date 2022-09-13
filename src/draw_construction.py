@@ -153,7 +153,7 @@ def graph_tower_image(s, f, layer_heights, block_info, coalitions, fname):
     axs[1].set_title("Tower Construction Schedule")
     axs[1].set_xlabel("time")
 
-    plt.savefig("./autonomous_construction/generated_examples/"+fname+".png")
+    plt.savefig("./autonomous_construction/"+fname+".png")
     plt.show()
 
 def flows_to_taskrobots(flows, edges, numtasks, numrobots):
@@ -163,5 +163,61 @@ def flows_to_taskrobots(flows, edges, numtasks, numrobots):
         node_flows[dest_edge] = node_flows[dest_edge] + flow
     node_flows = [ int(f*numrobots) for f in node_flows ]
     return node_flows
+
+def graph_tower_image_two(s1, f1, s2, f2, r1, r2, layer_heights, block_info, coalitions, fname):
+
+
+    def get_cmap(n, name='Set2'):
+        '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct 
+        RGB color; the keyword argument name must be a standard mpl colormap name.'''
+        return plt.cm.get_cmap(name, n+2)
+    
+    numtasks = len(coalitions)
+    t_height = sum(layer_heights)
+    t_width = block_info[0][-1][1]
+    plt.rcParams["font.family"] = "Times New Roman"
+    fig, axs = plt.subplots(3, figsize=(5,7))
+    axs[0].set_xlim([-1*int(t_width*0.1),int(t_width*1.1)])
+    axs[0].set_ylim([0,int(t_height*1.1)])
+    axs[0].axes.xaxis.set_visible(False)
+    axs[0].axes.yaxis.set_visible(False)
+    axs[0].set_title("Block Tower")
+    full_blocks = []
+    for j, layer in enumerate(block_info):
+        layer_unpacked = [ b + [sum(layer_heights[:j]), layer_heights[j]] for b in layer ]
+        full_blocks = full_blocks + layer_unpacked
+    
+    cmap = get_cmap(len(full_blocks))
+
+    for i, block in enumerate(full_blocks):
+        xstart, _, width, ystart, height = block
+        axs[0].add_patch(patches.Rectangle((xstart, ystart), width, height, facecolor=cmap(i)))
+
+    sftimes1 = list(zip(s1[1:-1], f1[1:-1]))
+
+    for i,tasktime in enumerate(sftimes1):
+        axs[1].barh(i,width=tasktime[1]-tasktime[0],left=tasktime[0], color=cmap(i))
+
+    axs[1].set_yticks(range(len(sftimes1)))
+    axs[1].set_yticklabels([f'block {i+1}' for i in range(len(sftimes1))])
+    axs[1].set_xlim(0, max(max(f1),max(f2)))
+    axs[1].set_title("NLP Solution Schedule (Reward =" + str(r1) + ")")
+    axs[1].set_xlabel("time")
+
+    sftimes2 = list(zip(s2[1:-1], f2[1:-1]))
+
+    for i,tasktime in enumerate(sftimes2):
+        axs[2].barh(i,width=tasktime[1]-tasktime[0],left=tasktime[0], color=cmap(i))
+
+    axs[2].set_yticks(range(len(sftimes2)))
+    axs[2].set_yticklabels([f'block {i+1}' for i in range(len(sftimes2))])
+    axs[2].set_xlim(0, max(max(f1),max(f2)))
+    axs[2].set_title("MINLP Solution Schedule (Reward =" + str(r2) + ")")
+    axs[2].set_xlabel("time")
+
+    plt.subplots_adjust(hspace=0.6)
+
+    plt.savefig("./autonomous_construction/"+fname+".png")
+    plt.show()
 
 
