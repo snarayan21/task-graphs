@@ -164,8 +164,7 @@ def flows_to_taskrobots(flows, edges, numtasks, numrobots):
     node_flows = [ int(f*numrobots) for f in node_flows ]
     return node_flows
 
-def graph_tower_image_two(s1, f1, s2, f2, r1, r2, layer_heights, block_info, coalitions, fname):
-
+def graph_tower_image_two(s1, f1, s2, f2, r1, r2, makespan_constraint, layer_heights, block_info, coalitions, fname):
 
     def get_cmap(n, name='Set2'):
         '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct 
@@ -198,9 +197,11 @@ def graph_tower_image_two(s1, f1, s2, f2, r1, r2, layer_heights, block_info, coa
     for i,tasktime in enumerate(sftimes1):
         axs[1].barh(i,width=tasktime[1]-tasktime[0],left=tasktime[0], color=cmap(i))
 
+    axs[1].axvline(makespan_constraint, color='k')
+
     axs[1].set_yticks(range(len(sftimes1)))
     axs[1].set_yticklabels([f'block {i+1}' for i in range(len(sftimes1))])
-    axs[1].set_xlim(0, max(max(f1),max(f2)))
+    axs[1].set_xlim(0, makespan_constraint*1.2)
     axs[1].set_title("NLP Solution Schedule (Reward =" + str(r1) + ")")
     axs[1].set_xlabel("time")
 
@@ -209,9 +210,11 @@ def graph_tower_image_two(s1, f1, s2, f2, r1, r2, layer_heights, block_info, coa
     for i,tasktime in enumerate(sftimes2):
         axs[2].barh(i,width=tasktime[1]-tasktime[0],left=tasktime[0], color=cmap(i))
 
+    axs[2].axvline(makespan_constraint, color='k')
+
     axs[2].set_yticks(range(len(sftimes2)))
     axs[2].set_yticklabels([f'block {i+1}' for i in range(len(sftimes2))])
-    axs[2].set_xlim(0, max(max(f1),max(f2)))
+    axs[2].set_xlim(0, makespan_constraint*1.2)
     axs[2].set_title("MINLP Solution Schedule (Reward =" + str(r2) + ")")
     axs[2].set_xlabel("time")
 
