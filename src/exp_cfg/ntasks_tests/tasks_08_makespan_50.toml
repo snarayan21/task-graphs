@@ -1,6 +1,6 @@
 [exp]
 exp_name = 'tasks_08_makespan_50_exp'
-num_trials = 5
+num_trials = 10
 num_layers = 4
 num_robots = 4
 num_layer_nodes_max = 3
