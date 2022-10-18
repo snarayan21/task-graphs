@@ -23,12 +23,32 @@ import os
 class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
-    def __init__(self, max_steps, num_tasks, edges, coalition_params, coalition_types, dependency_params, dependency_types, aggs,
-                 numrobots, coalition_influence_aggregator='sum', task_times=None, minlp_time_constraint=False, minlp_reward_constraint=False):
+    def __init__(self,
+                 max_steps,
+                 num_tasks,
+                 edges,
+                 coalition_params,
+                 coalition_types,
+                 dependency_params,
+                 dependency_types,
+                 aggs,
+                 num_robots,
+                 coalition_influence_aggregator='sum',
+                 nodewise_coalition_influence_agg_list = None,
+                 task_times=None,
+                 makespan_constraint=10000,
+                 minlp_time_constraint=False,
+                 minlp_reward_constraint=False,
+                 run_minlp=True):
+
         self.max_steps = max_steps
         self.num_tasks = num_tasks
-        self.num_robots = numrobots
+        self.num_robots = num_robots
         self.coalition_influence_aggregator = coalition_influence_aggregator
+        if nodewise_coalition_influence_agg_list is None:
+            self.nodewise_coalition_influence_agg_list = [self.coalition_influence_aggregator for _ in range(self.num_tasks)]
+        else:
+            self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
@@ -43,10 +63,20 @@ class TaskGraph:
         self.dependency_types = dependency_types
         self.aggs = aggs
 
-        if task_times is None:
-            task_times = np.random.rand(num_tasks) # randomly sample task times from the range 0 to 1
-        self.task_times = task_times
+        self.run_minlp = run_minlp
 
+        if task_times is None:
+            task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
+            task_times[0] = 0.0
+        self.task_times = np.array(task_times, dtype='float')
+
+        # makespan constriant is 'cleared' if we have already pruned the graph and are just using this object to
+        # calculate pruned solutions
+        # makespan constraint represents RELATIVE VALUE of total task duration (between 0 and 1) otherwise
+        if makespan_constraint == 'cleared':
+            self.makespan_constraint = makespan_constraint
+        else:
+            self.makespan_constraint = np.sum(self.task_times)*float(makespan_constraint)
         self.fig = None
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
@@ -59,19 +89,27 @@ class TaskGraph:
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs,
-                                        coalition_influence_aggregator=self.coalition_influence_aggregator)
+                                        coalition_influence_aggregator=self.coalition_influence_aggregator,
+                                        nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
-        self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
-                                num_robots=self.num_robots,
-                                task_graph=self.task_graph,
-                                coalition_params=coalition_params,
-                                coalition_types=coalition_types,
-                                dependency_params=dependency_params,
-                                dependency_types=dependency_types,
-                                influence_agg_func_types=aggs,
-                                coalition_influence_aggregator=self.coalition_influence_aggregator)
+        # self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
+        #                         num_robots=self.num_robots,
+        #                         task_graph=self.task_graph,
+        #                         coalition_params=coalition_params,
+        #                         coalition_types=coalition_types,
+        #                         dependency_params=dependency_params,
+        #                         dependency_types=dependency_types,
+        #                         influence_agg_func_types=aggs,
+        #                         coalition_influence_aggregator=self.coalition_influence_aggregator,
+        #                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
-        self.minlp_obj = self.initialize_minlp_obj()
+        self.pruned_graph_list = None
+        self.pruned_graph_edge_mappings_list = None
+        if self.makespan_constraint != 'cleared':
+            if self.run_minlp:
+                self.minlp_obj = self.initialize_minlp_obj()
+            self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
+
 
         # variables using in the optimization
         self.var_flow = None
@@ -108,11 +146,72 @@ class TaskGraph:
             dependency_types=self.dependency_types,
             influence_agg_func_types=self.aggs,
             coalition_influence_aggregator=self.coalition_influence_aggregator,
+            nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
-            task_times=self.task_times
+            task_times=self.task_times,
+            makespan_constraint=self.makespan_constraint
         )
         return obj
+
+
+    def prune_graph(self):
+        start_times, finish_times = self.time_task_execution(np.ones((self.num_edges,)))
+        to_prune = finish_times > self.makespan_constraint
+        to_prune_indices = [i for i in range(self.num_tasks) if to_prune[i]]
+
+        # create list of pruned indices
+        pruned_tasks = [i for i in range(self.num_tasks) if not to_prune[i]]
+
+        pruned_edges = []         # create list of pruned edges
+        pruned_edges_mapping = []         # create mapping from original edges to pruned edges
+        for (edge, edge_ind) in zip(self.edges,range(len(self.edges))):
+            if edge[0] in pruned_tasks and edge[1] in pruned_tasks:
+                pruned_edges.append(edge)
+                pruned_edges_mapping.append(edge_ind)
+
+        # rename edges according to new number of tasks
+        renamed_edges = []
+        for edge in pruned_edges:
+            node_out = pruned_tasks.index(edge[0])
+            node_in = pruned_tasks.index(edge[1])
+            renamed_edges.append((node_out,node_in))
+
+        # assemble new task graph args
+        coalition_types = []
+        coalition_params = []
+        aggs = []
+        for task in pruned_tasks:
+            coalition_types.append(self.coalition_types[task])
+            coalition_params.append(self.coalition_params[task])
+            aggs.append(self.aggs[task])
+
+        dependency_types = []
+        dependency_params = []
+        for edge_ind in range(len(pruned_edges)):
+            dependency_types.append(self.dependency_types[pruned_edges_mapping[edge_ind]])
+            dependency_params.append(self.dependency_params[pruned_edges_mapping[edge_ind]])
+
+        # create new task graph
+        new_graph = TaskGraph(
+                 max_steps=self.max_steps,
+                 num_tasks=len(pruned_tasks), # new quantity of tasks
+                 edges=renamed_edges, # new edges
+                 coalition_params=coalition_params,
+                 coalition_types=coalition_types,
+                 dependency_params=dependency_params,
+                 dependency_types=dependency_types,
+                 aggs=aggs,
+                 num_robots=self.num_robots,
+                 coalition_influence_aggregator=self.coalition_influence_aggregator,
+                 nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
+                 task_times=self.task_times,
+                 makespan_constraint='cleared', # specify cleared because it is already pruned
+                 minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized
+                 minlp_reward_constraint=False
+        )
+
+        return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
         """
@@ -149,7 +248,7 @@ class TaskGraph:
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
-
+        """
         if self.minlp_time_constraint:
             if self.last_baseline_solution is not None:
                 s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
@@ -188,6 +287,35 @@ class TaskGraph:
         if not self.minlp_time_constraint and not self.minlp_reward_constraint:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        """
+        self.minlp_timeout = 600
+        self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
+        self.minlp_obj.model.optimize()
+        status = self.minlp_obj.model.getStatus()
+        try:
+            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
+        except:
+
+        #if status != "optimal" and status != "timelimit":
+            x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+            o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
+            z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
+            s_len = self.num_tasks
+            f_len = self.num_tasks
+            self.last_minlp_solution_val = 0.0
+            self.last_minlp_solution = np.zeros((x_len+o_len+z_len+s_len+f_len,))
+            self.minlp_makespan = 0.0
+            self.minlp_dual_bound = self.minlp_obj.model.getDualbound()
+            self.minlp_primal_bound = 1000000000
+            self.minlp_gap = 1000000000
+            self.minlp_obj_limit = 1000000000
+            return
+
+
+        self.minlp_dual_bound = self.minlp_obj.model.getDualbound()
+        self.minlp_primal_bound = self.minlp_obj.model.getPrimalbound()
+        self.minlp_gap = self.minlp_obj.model.getGap()
+        self.minlp_obj_limit = self.minlp_obj.model.getObjlimit()
 
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
@@ -216,32 +344,101 @@ class TaskGraph:
                             print("Agent ", a, " performs task ", k, " and then task ", k_p)
         self.last_minlp_solution = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
         self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
+        self.minlp_makespan = self.minlp_info_dict['makespan']
+
+    def solve_graph_minlp_dummy(self):
+        x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+        o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
+        z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
+        s_len = self.num_tasks
+        f_len = self.num_tasks
+        self.last_minlp_solution_val = 0.0
+        self.last_minlp_solution = np.zeros((x_len+o_len+z_len+s_len+f_len,))
+        self.minlp_makespan = 0.0
+        self.minlp_dual_bound = 1000000000
+        self.minlp_primal_bound = 1000000000
+        self.minlp_gap = 1000000000
+        self.minlp_obj_limit = 1000000000
 
     def solve_graph_scipy(self):
+
+        if self.makespan_constraint != 'cleared':
+            # graph instantiation not pruned -- solve pruned graphs and choose best solution
+            pruned_solutions = []
+            pruned_rewards = []
+            for g in self.pruned_graph_list:
+                try:
+                    g.solve_graph_scipy()
+                except(ValueError):
+                    class CustomSolution:
+                        pass
+                    g.last_baseline_solution = CustomSolution
+                    g.last_baseline_solution.x = np.zeros((self.num_edges,))
+
+
+                pruned_solutions.append(g.last_baseline_solution)
+                pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
+            best_solution_ind = np.argmax(np.array(pruned_rewards))
+            #breakpoint()
+
+            best_flows_pruned = pruned_solutions[best_solution_ind].x
+            edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
+
+            # construct best solution from a pruned graph in terms of the current graph's edges
+            flows = np.zeros((len(self.edges),))
+            for edge_ind in range(len(best_flows_pruned)):
+                mapped_ind = edge_mappings[edge_ind]
+                flows[mapped_ind] = best_flows_pruned[edge_ind]
+
+            # save best solution in solution object
+            class CustomSolution:
+                pass
+
+            self.pruned_baseline_solution = CustomSolution
+            self.pruned_baseline_solution.x = flows
+            self.pruned_rounded_baseline_solution = self.round_graph_solution(self.pruned_baseline_solution.x)
+
+
+        if self.num_tasks < 2:
+            # save best solution in solution object
+            class CustomSolution:
+                pass
+            self.last_baseline_solution = CustomSolution
+            self.last_baseline_solution.x = []
+            self.rounded_baseline_solution = []
+
+
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
         b = np.zeros(self.num_tasks)
 
         # scipy version
         # equality flow constraint
         lb2 = np.zeros(self.num_tasks-2)
-        ub2 = np.zeros(self.num_tasks-2)
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
+        ub2 = np.ones(self.num_tasks-2)
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
 
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
 
-        # inequality constraint on beginning and ending flow
+        # inequality constraint on beginning flow
         c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
-        #import pdb; pdb.set_trace()
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*0.5, constraints=(c1,c2,c3))
+        init_val = 0.5
+        constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
+        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
         print(scipy_result)
+        if scipy_result.success == False:
+            while scipy_result.success==False and init_val >= 0:
+                print("Re-init scipy with val ", init_val)
+                scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
+                init_val = init_val - 0.1
         self.last_baseline_solution = scipy_result
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
 
     def round_graph_solution(self, flows):
         ordered_nodes = list(nx.topological_sort(self.task_graph))
+        #convert flows to units of whole agents
         flows_mult = flows*self.num_robots
         rounded_flows = np.zeros_like(flows)
 
@@ -264,104 +461,137 @@ class TaskGraph:
             # round out flows to nearest digit
             candidate_out_flows = np.around(out_flows)
 
-            while (np.sum(candidate_out_flows) != in_flow):
+            # if we rounded up too much and created more outflow than inflow:
+            while (np.sum(candidate_out_flows) > in_flow):
                 diff = in_flow - np.sum(candidate_out_flows)
-                rounding_diffs = out_flows - candidate_out_flows
-                if diff >= 0:
-                    increase_ind = np.argmin(rounding_diffs)
-                    candidate_out_flows[increase_ind] = candidate_out_flows[increase_ind] + 1
-                else:
+                rounding_diffs = candidate_out_flows - out_flows
+                for i in range(len(rounding_diffs)):
+                    if candidate_out_flows[i] == 0.0:
+                        rounding_diffs[i] = -10000000
+                if diff < 0:
                     decrease_ind = np.argmax(rounding_diffs)
                     candidate_out_flows[decrease_ind] = candidate_out_flows[decrease_ind] - 1
 
             #populate new flows into vector
             for (f, i) in zip(candidate_out_flows, out_edge_inds):
+                if f < 0.0:
+                    pass
                 rounded_flows[i] = f
 
         return rounded_flows/self.num_robots
 
     def solve_graph_greedy(self):
+
+        if self.makespan_constraint != 'cleared':
+            # graph instantiation not pruned -- solve pruned graphs and choose best solution
+            pruned_solutions = []
+            pruned_rewards = []
+            for g in self.pruned_graph_list:
+                g.solve_graph_greedy()
+                pruned_solutions.append(g.last_greedy_solution)
+                pruned_rewards.append(-g.reward_model.flow_cost(g.last_greedy_solution))
+            best_solution_ind = np.argmax(np.array(pruned_rewards))
+
+            best_flows_pruned = pruned_solutions[best_solution_ind]
+            edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
+
+            # construct best solution from a pruned graph in terms of the current graph's edges
+            flows = np.zeros((len(self.edges),))
+            for edge_ind in range(len(best_flows_pruned)):
+                mapped_ind = edge_mappings[edge_ind]
+                flows[mapped_ind] = best_flows_pruned[edge_ind]
+
+            # save best solution
+            self.pruned_greedy_solution = flows
+            self.pruned_rounded_greedy_solution = self.round_graph_solution(self.pruned_greedy_solution)
+
+
+
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
-        num_assigned_edges = 0
-        node_queue = []
-        curr_node = 0
 
-        while True:
+        ordered_nodes = list(nx.topological_sort(self.task_graph))
+
+        for curr_node in ordered_nodes[:-1]:
             out_edges = self.task_graph.out_edges(curr_node)
-            out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
-            in_edges = list(self.task_graph.in_edges(curr_node))
-            in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
-            if num_assigned_edges == self.num_edges:
-                break
-            num_edges = len(out_edges)
+            if len(out_edges) > 0:
+                out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+                in_edges = list(self.task_graph.in_edges(curr_node))
+                in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
+                num_edges = len(out_edges)
+                if num_edges == 0:
+                    pass
+                    #breakpoint()
+                # make cost function handle that takes in edge values and returns rewards
+                def node_reward(f, out_edge_inds, out_neighbors):
+                    sort_mapping = np.argsort(out_edge_inds)
+                    last_ind = -1
+                    arrays_list = []
+                    for mapping_ind in sort_mapping:
+                        out_edge_ind = out_edge_inds[mapping_ind]
+                        if last_ind + 1 != out_edge_ind:
+                            arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:out_edge_ind]))
+                        arrays_list.append(np.atleast_1d(f[mapping_ind]))
+                        last_ind = out_edge_ind
+                    if last_ind != self.num_edges-1:
+                        arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:]))
 
-            # make cost function handle that takes in edge values and returns rewards
-            def node_reward(f, arg_curr_node, arg_num_assigned_edges):
-                try:
-                    input_flows = np.concatenate((self.last_greedy_solution[0:arg_num_assigned_edges], f, np.zeros((self.num_edges-len(f)-arg_num_assigned_edges,))))
-                except(ValueError):
-                    breakpoint()
-                rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
-                relevant_reward_inds = list(range(arg_curr_node+1))
-                for n in self.task_graph.neighbors(arg_curr_node):
-                    relevant_reward_inds.append(n)
+                    #print("input flow inds: ", out_edge_inds, "\n input flow cands: ", f, "\n before: ", self.last_greedy_solution)
+                    #print('arrays_list: ',arrays_list)
+                    input_flows = np.concatenate(arrays_list)
+                    #print( "\n after: ", input_flows)
+                    rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
+                    relevant_costs = np.array(rewards[out_neighbors])
+                    return np.sum(relevant_costs)
 
-                relevant_costs = rewards[relevant_reward_inds]
-                return np.sum(relevant_costs)
+                # get incoming flow quantity to node
+                incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
+                if curr_node == 0:
+                    incoming_flow = 1.0
+                #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
 
-            # get incoming flow quantity to node
-            incoming_flow = np.sum(self.last_greedy_solution[in_edge_inds])
-            if curr_node == 0:
-                incoming_flow = 1.0
-            #node_cost(0.5*np.ones((num_edges,)), curr_node, num_assigned_edges)
+                # use random sampling to find a good initial state
+                candidate_flows = []
+                cand_flow_rewards = []
+                n_samples = 50
+                for n in range(n_samples):
+                    cand_flow = np.random.rand(num_edges)
+                    cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
+                    candidate_flows.append(cand_flow)
+                    cand_flow_rewards.append(node_reward(cand_flow,out_edge_inds,[edge[1] for edge in out_edges]))
 
-            # use random sampling to find a good initial state
-            candidate_flows = []
-            cand_flow_rewards = []
-            n_samples = 50
-            for n in range(n_samples):
-                cand_flow = np.random.rand(num_edges)
-                cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
-                candidate_flows.append(cand_flow)
-                cand_flow_rewards.append(node_reward(cand_flow,curr_node,num_assigned_edges))
+                #find best initial state NOTE: finding max reward
+                best_ind = np.argmax(np.array(cand_flow_rewards))
+                best_init_state = candidate_flows[best_ind]
+                gradient_func = grad(node_reward,0)
 
-            #find best initial state NOTE: finding max reward
-            best_ind = np.argmax(np.array(cand_flow_rewards))
-            best_init_state = candidate_flows[best_ind]
-            gradient_func = grad(node_reward,0)
+                # GRADIENT DESCENT
+                max_iter = 50
+                dt = 0.1
+                last_state = best_init_state
+                for i in range(max_iter):
+                    # take gradient of cost function with respect to edge values
+                    gradient_t = gradient_func(last_state, out_edge_inds, [edge[1] for edge in out_edges])
+                    if np.isnan(gradient_t).any():
+                        gradient_t = np.zeros_like(gradient_t)
+                        print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
+                    # TODO: project gradient onto hyperplane that respects constraints
+                    # FOR NOW: just normalize new state such that it is valid
 
-            # GRADIENT DESCENT
-            max_iter = 50
-            dt = 0.1
-            last_state = best_init_state
-            for i in range(max_iter):
-                # take gradient of cost function with respect to edge values
-                gradient_t = gradient_func(last_state,curr_node,num_assigned_edges)
-                if np.isnan(gradient_t).any():
-                    gradient_t = np.zeros_like(gradient_t)
-                    print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
-                # TODO: project gradient onto hyperplane that respects constraints
-                # FOR NOW: just normalize new state such that it is valid
-
-                # take a step along that vector direction
-                new_cand_state = last_state + dt*gradient_t
-                for k in range(num_edges):
-                    if new_cand_state[k] <= 0:
-                        new_cand_state[k] = 0.00001
-                last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
+                    # take a step along that vector direction
+                    new_cand_state = last_state + dt*gradient_t
+                    for k in range(num_edges):
+                        if new_cand_state[k] <= 0:
+                            new_cand_state[k] = 0.00001
+                    last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
 
 
-            # update self.last_greedy_solution
-            for (edge_i, new_flow) in zip(out_edge_inds,last_state):
-                self.last_greedy_solution[edge_i] = new_flow
-                if np.isnan(new_flow):
-                    breakpoint()
-            # continue to next node
-            out_nbrs = [n for n in self.task_graph.neighbors(curr_node)]
-            node_queue.extend(out_nbrs)
-            curr_node = node_queue.pop(0)
-            num_assigned_edges += num_edges
+                # update self.last_greedy_solution
+                for (edge_i, new_flow) in zip(out_edge_inds,last_state):
+                    self.last_greedy_solution[edge_i] = new_flow
+                    if np.isnan(new_flow):
+                        print("GREEDY SOLUTION FLOW IS NAN")
+                        #breakpoint()
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
@@ -520,6 +750,7 @@ class TaskGraph:
 
         nodelist = list(range(self.num_tasks))
         frontier_nodes.append(nodelist[0])
+        incomplete_nodes = []
         while len(frontier_nodes) > 0:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
@@ -534,11 +765,9 @@ class TaskGraph:
 
                 if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
                     task_start_times[current_node] = 0.0
+                    incomplete_nodes.append(current_node)
                 else:
-                    try:
-                        task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
-                    except(ValueError):
-                        breakpoint()
+                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
@@ -546,6 +775,8 @@ class TaskGraph:
                 if n not in frontier_nodes:
                     frontier_nodes.append(n)
 
+        for node in incomplete_nodes:
+            task_finish_times[node] = 0.0
         return task_start_times, task_finish_times
 
 
@@ -775,5 +1006,11 @@ class TaskGraph:
             print("Time ", f_k[t],": task %d completed by %d agents" % (t, task_coalitions[t]))
             time_string.append("Time " + str(f_k[t]) + ": task %d completed by %d agents" % (t, task_coalitions[t]))
         info_dict['task times'] = time_string
+
+        completed_task_times = [f_k[k] for k in range(self.num_tasks) if task_coalitions[k]>0.0]
+        if len(completed_task_times) > 0:
+            info_dict['makespan'] = np.max(completed_task_times)
+        else:
+            info_dict['makespan'] = 0.0
         return info_dict
 

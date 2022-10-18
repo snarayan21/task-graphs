@@ -10,7 +10,8 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, reward_model, task_graph, task_times, time_limit=1000):
+                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list,
+                 reward_model, task_graph,task_times, makespan_constraint, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -20,9 +21,11 @@ class MRTA_XD():
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
         self.coalition_influence_aggregator = coalition_influence_aggregator
+        self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
         self.task_times = task_times
+        self.makespan_constraint = makespan_constraint
         self.time_limit = time_limit
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
@@ -89,18 +92,21 @@ class MRTA_XD():
         print("COALITION REWARDS CALCULATED")
         task_influence_rewards = [None for _ in range(self.num_tasks)]
         task_influnce_agg = [None for _ in range(self.num_tasks)]
-        task_rewards = [None for _ in range(self.num_tasks)] # np.zeros((self.num_tasks,))
+        task_rewards = [None for _ in range(self.num_tasks)]
         #print(self.influence_func_handles)
         #print(self.in_nbrs)
-        for t in self.node_order:
+        task_rewards[0] = 1.0 #SEED TASK HAS ONE REWARD (identity for prod aggregator)
+        for t in self.node_order[1:]:
+            if np.array([task_rewards[self.in_nbrs[t][n]] is None for n in range(len(self.in_nbrs[t]))]).any():
+                breakpoint()
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
-            if len(self.in_nbrs[t]) == 0 and self.coalition_influence_aggregator=='product':
+            if len(self.in_nbrs[t]) == 0:
                 task_influence_rewards[t] = [1.0]
             task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
-            if self.coalition_influence_aggregator == 'sum':
-                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t] # TODO expand this to have more options than just sum
-            if self.coalition_influence_aggregator == 'product':
-                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t] # TODO expand this to have more options than just sum
+            if self.nodewise_coalition_influence_agg_list[t] == 'sum':
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t]
+            if self.nodewise_coalition_influence_agg_list[t] == 'product':
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t]
         #print("overall rewards: ", task_rewards)
         print("TASK REWARDS CALCULATED")
         return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
@@ -145,7 +151,7 @@ class MRTA_XD():
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
                     #print("Task ", k ," must precede task ", k_p)
-                    is_task_completed = quickprod([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
+                    is_task_completed = quicksum([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
                     self.model.addCons(is_task_completed*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
@@ -158,6 +164,11 @@ class MRTA_XD():
         # DURATION CONSTRAINTS
         for k in range(self.num_tasks):
             self.model.addCons(self.f_k[k] >= self.s_k[k] + self.task_times[k])
+
+        # MAKESPAN CONSTRAINTS
+        for k in range(self.num_tasks):
+            var_list = [self.x_ak[self.ind_x_ak[a,k+1]] for a in range(self.num_robots)]
+            self.model.addCons(quicksum(var_list)*(self.f_k[k]-self.makespan_constraint) <= 0)
 
     def partition_x(self, x):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -186,6 +197,8 @@ class MRTA_XD():
         return param[0] / (1 + exp(-1 * param[1] * (flow-param[2]))) - param[3]
 
     def dim_return(self, flow, param):
+        if np.array([p is None for p in param]).any() or flow is None:
+            breakpoint()
         return param[0] - param[2] * exp(-1 * param[1] * flow)
         # return param[0] + (param[2] * (1 - np.exp(-1 * param[1] * flow)))
 

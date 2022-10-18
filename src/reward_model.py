@@ -14,12 +14,13 @@ class RewardModel:
     """
 
     def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types, coalition_influence_aggregator):
+                 dependency_types, influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
         self.coalition_influence_aggregator = coalition_influence_aggregator
+        self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         #breakpoint()
         self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
@@ -51,8 +52,9 @@ class RewardModel:
         incoming_flow = self._compute_incoming_flow(f)
 
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
-        if self.coalition_influence_aggregator == 'product':
-            var_reward_mean[0] = 1
+        #var_reward_mean[0] = 0.0
+        #if self.coalition_influence_aggregator == 'product' or self.coalition_influence_aggregator == 'mix':
+        var_reward_mean[0] = 1.0
         var_reward_stddev = np.zeros(self.num_tasks, dtype=object)
         var_reward = np.zeros(self.num_tasks, dtype=object)
 
@@ -109,10 +111,11 @@ class RewardModel:
             return 0.1 * val
 
         agg_delta = influence_agg_func(deltas)
-        if self.coalition_influence_aggregator == 'sum':
+        if self.nodewise_coalition_influence_agg_list[node_i] == 'sum':
             reward_func_val = agg_delta + rho
-        if self.coalition_influence_aggregator == 'product':
+        if self.nodewise_coalition_influence_agg_list[node_i] == 'product':
             reward_func_val = agg_delta * rho
+
         mean = reward_func_val
         std = std_dev_func(reward_func_val)
         return mean, std

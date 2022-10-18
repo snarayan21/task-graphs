@@ -117,7 +117,7 @@ def plot_tower_graph(Gr, num_layers, tower_edges, tower_contact_edges, tower_int
     nx.draw_networkx_edges(Gr, pos, edgelist=tower_contact_edges, arrowstyle="->", edge_color="red", arrowsize=10)
 
     if save:
-        plt.savefig("./autonomous_construction/generated_examples/"+filename+"_graph.png")
+        plt.savefig("./autonomous_construction/experiments_examples/"+filename+"_graph.png")
     else:
         plt.show()
 
@@ -216,11 +216,12 @@ def export_toml_files(G, draw, heights, blocks, tower_contact_edges, tower_inter
     dependency_types = len(edgelist)*['polynomial']
 
     dependency_params = []
+
     for e in edgelist:
         if e in contact_edgelist:
-            dependency_params.append([0.0, 0.0, 0.0])
-        elif e in interlayer_edgelist:
-            dependency_params.append([0.0, 0.0, 0.0])
+            dependency_params.append([5.0, 0.0, 0.0])
+            #elif e in interlayer_edgelist:
+            #dependency_params.append([0.0, 0.0, 0.0])
         else:
             dependency_params.append([0.0, 0.0, 0.0])
 
@@ -247,7 +248,7 @@ def export_toml_files(G, draw, heights, blocks, tower_contact_edges, tower_inter
         }
     }
 
-    f = open("./autonomous_construction/generated_examples/"+filename+".toml", 'w+')
+    f = open("./autonomous_construction/experiments_examples/"+filename+".toml", 'w+')
     toml.dump(toml_dict, f)
 
 def generate_full_example_data(initial_width, num_layers, filename):
@@ -257,7 +258,7 @@ def generate_full_example_data(initial_width, num_layers, filename):
     G.add_nodes_from(tower_nodes)
     G.add_edges_from(tower_edges)
     plot_tower_graph(G, n_layers, tower_edges, tower_contact_edges, tower_interlayer_edges, True, filename)
-    export_toml_files(G, True, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename)
+    export_toml_files(G, False, heights, blocks, tower_contact_edges, tower_interlayer_edges, filename)
 
 def main():
     if(len(sys.argv) != 4):

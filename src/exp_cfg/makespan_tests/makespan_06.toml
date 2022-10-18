@@ -1,0 +1,13 @@
+[exp]
+exp_name = 'makespan_06_exp'
+num_trials = 5
+num_layers = 5
+num_robots = 4
+num_layer_nodes_max = 3
+run_ddp = false
+coalition_influence_aggregator = 'mix'
+makespan_constraint = 0.6
+
+
+from_file = false
+filename = ''

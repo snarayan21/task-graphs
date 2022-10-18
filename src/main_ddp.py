@@ -41,7 +41,7 @@ def main():
     #1. pull from autonomous_construction branch
     #2. make sure you are in task-graphs/src
     #3. run: python ./autonomous_construction/initial_blocks.py [tower base width] [# of tower layers] [tower name]
-    #4. run: python main_ddp.py -cfg ./autonomous_construction/generated_examples/[tower name].toml [whatver flags / args]
+    #4. run: python main_ddp.py -cfg ./autonomous_construction/experiments_examples/[tower name].toml [whatver flags / args]
     #Note the use of the flows_to_taskrobots and graph_tower functions below. Imported from src/draw_construction.py
     
     if("tower" in track_args):

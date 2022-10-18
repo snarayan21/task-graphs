@@ -1,0 +1,14 @@
+[exp]
+exp_name = 'agents_02_exp'
+num_trials = 10
+num_layers = 5
+num_robots = 2
+num_layer_nodes_max = 3
+num_nodes = 10
+run_ddp = false
+coalition_influence_aggregator = 'mix'
+makespan_constraint = 0.6
+
+
+from_file = false
+filename = ''
