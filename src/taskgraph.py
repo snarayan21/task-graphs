@@ -288,7 +288,7 @@ class TaskGraph:
             self.minlp_obj.model.optimize()
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         """
-        self.minlp_timeout = 1
+        self.minlp_timeout = 600
         self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
         self.minlp_obj.model.optimize()
         status = self.minlp_obj.model.getStatus()
@@ -510,7 +510,6 @@ class TaskGraph:
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
 
-        # TODO GREEDY ALGORITHM currently super buggy. Re-write with topo sort to simplify. node queue is messing things up maybe
         ordered_nodes = list(nx.topological_sort(self.task_graph))
 
         for curr_node in ordered_nodes[:-1]:
@@ -521,7 +520,8 @@ class TaskGraph:
                 in_edge_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges]
                 num_edges = len(out_edges)
                 if num_edges == 0:
-                    breakpoint()
+                    pass
+                    #breakpoint()
                 # make cost function handle that takes in edge values and returns rewards
                 def node_reward(f, out_edge_inds, out_neighbors):
                     sort_mapping = np.argsort(out_edge_inds)
@@ -590,7 +590,8 @@ class TaskGraph:
                 for (edge_i, new_flow) in zip(out_edge_inds,last_state):
                     self.last_greedy_solution[edge_i] = new_flow
                     if np.isnan(new_flow):
-                        breakpoint()
+                        print("GREEDY SOLUTION FLOW IS NAN")
+                        #breakpoint()
 
 
     def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
@@ -766,10 +767,7 @@ class TaskGraph:
                     task_start_times[current_node] = 0.0
                     incomplete_nodes.append(current_node)
                 else:
-                    try:
-                        task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
-                    except(ValueError):
-                        breakpoint()
+                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
