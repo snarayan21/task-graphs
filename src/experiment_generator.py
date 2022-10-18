@@ -52,7 +52,6 @@ class ExperimentGenerator():
             elif self.from_file:
                 exp_path = pathlib.Path(self.filename)
                 experiment_dir_name = exp_path.name.replace(".toml", "_exp")
-                breakpoint()
             else:
                 raise NotImplementedError("must provide experiment name or load experiment from file")
         experiment_dir_path, experiment_dir_name = clean_dir_name(experiment_dir_name, self.experiment_data_dir)
@@ -506,6 +505,8 @@ def load_taskgraph_args(filename):
     task_graph = nx.DiGraph()
     task_graph.add_nodes_from(range(num_tasks))
     task_graph.add_edges_from(edges)
+    if 'makespan_constraint' not in args['exp'].keys():
+        args['exp']['makespan_constraint'] = 0.8
 
     return args, task_graph, None
 
