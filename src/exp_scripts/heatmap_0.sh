@@ -1,4 +1,4 @@
-EXP_NAME=heatmap_9_11_600t
+EXP_NAME=heatmap_9_12_600t
 
 
 python experiment_generator.py -cfg exp_cfg/ntasks_tests/tasks_08_makespan_25.toml -o "${EXP_NAME}_08_25_exp"

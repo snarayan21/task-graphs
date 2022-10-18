@@ -1,4 +1,4 @@
-EXP_NAME=agents_9_9_mix_600t
+EXP_NAME=agents_9_11_mix_600t
 
 #set -x
 #trap read debug
