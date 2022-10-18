@@ -4,12 +4,11 @@ edges = [ [ 0, 1,], [ 0, 2,], [ 1, 3,], [ 1, 4,], [ 2, 3,], [ 2, 4,], [ 3, 5,], 
 num_tasks = 8
 num_robots = 4
 coalition_types = [ "null", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "polynomial",]
-coalition_params = [ [ 0, 0, 0,], [ 45.97953216374269, 10.0, 0.4597953216374269,], [ 48.68421052631579, 10.0, 0.4868421052631579,], [ 31.25, 10.0, 0.3125,], [ 68.75, 10.0, 0.6875,], [ 39.48830409356725, 10.0, 0.3948830409356725,], [ 35.486111111111114, 10.0, 0.3548611111111111,], [ 0.0, 1.0, 0.0,],]
+coalition_params = [ [ 0, 0, 0,], [ 45.97953216374269, 10.0, 0.4597953216374269,], [ 48.68421052631579, 10.0, 0.368421052631579,], [ 31.25, 10.0, 0.3125,], [ 68.75, 10.0, 0.6875,], [ 39.48830409356725, 10.0, 0.3948830409356725,], [ 35.486111111111114, 10.0, 0.3548611111111111,], [ 0.0, 1.0, 0.0,],]
 dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
 dependency_params = [ [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,],]
 aggs = [ "or", "or", "or", "or", "or", "or", "or", "or",]
-makespan_constraint = 0.75
-coalition_influence_aggregator = 'sum'
+coalition_influence_aggregator = 'product'
 
 [ddp]
 constraint_type = "qp"

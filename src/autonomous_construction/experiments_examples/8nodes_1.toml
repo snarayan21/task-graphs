@@ -7,9 +7,9 @@ coalition_types = [ "null", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid
 coalition_params = [ [ 0, 0, 0,], [ 29.634455302207748, 10.0, 0.29634455302207746,], [ 28.635541078537823, 10.0, 0.28635541078537824,], [ 54.14404632645675, 10.0, 0.5414404632645675,], [ 36.48208469055375, 10.0, 0.36482084690553745,], [ 62.21498371335505, 10.0, 0.6221498371335505,], [ 37.785016286644954, 10.0, 0.3778501628664495,], [ 0.0, 1.0, 0.0,],]
 dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
 dependency_params = [ [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,],]
-aggs = [ "or", "or", "or", "or", "or", "or", "or", "or",]
+aggs = [ "and", "and", "and", "and", "and", "and", "and", "and",]
 makespan_constraint = 0.75
-coalition_influence_aggregator = 'sum'
+coalition_influence_aggregator = 'product'
 
 [ddp]
 constraint_type = "qp"

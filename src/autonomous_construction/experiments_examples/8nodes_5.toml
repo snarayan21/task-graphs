@@ -7,8 +7,8 @@ coalition_types = [ "null", "sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid
 coalition_params = [ [ 0, 0, 0,], [ 50.28571428571429, 10.0, 0.5028571428571429,], [ 49.714285714285715, 10.0, 0.49714285714285716,], [ 12.698412698412698, 10.0, 0.12698412698412698,], [ 28.095238095238095, 10.0, 0.28095238095238095,], [ 10.476190476190476, 10.0, 0.10476190476190476,], [ 97.14285714285714, 10.0, 0.9714285714285714,], [ 0.0, 1.0, 0.0,],]
 dependency_types = [ "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial", "polynomial",]
 dependency_params = [ [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 5.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,], [ 0.0, 0.0, 0.0,],]
-aggs = [ "or", "or", "or", "or", "or", "or", "or", "or",]
-
+aggs = [ "and", "and", "and", "and", "and", "and", "and", "and",]
+coalition_influence_aggregator="product"
 [ddp]
 constraint_type = "qp"
 
