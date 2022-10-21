@@ -250,10 +250,20 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
+        #nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_c(prob=0.4)
+        if frontiers_list is None:
+            sorted_nodes = list(nx.topological_sort(nx_task_graph))
+            num_frontiers = int(np.floor(np.log(trial_num_nodes)))
+            frontier_width = int(np.floor(trial_num_nodes/num_frontiers))
+            frontiers_list = []
+            for i in range(num_frontiers):
+                frontiers_list.append(sorted_nodes[i*frontier_width:(i+1)*frontier_width])
+            leftovers = sorted_nodes[num_frontiers*frontier_width:]
+            if len(leftovers) > 0:
+                frontiers_list.append(leftovers)
         num_edges = len(edge_list)
-
-        #nx.draw(nx_task_graph)
+        #nx.draw(nx_task_graph, with_labels=True)
         #plt.show()
 
         #generate node positions
@@ -270,7 +280,7 @@ class ExperimentGenerator():
             y_interval = y_tot/n_nodes
             node_ct = 1
             for node in frontier:
-                node_pos[node] = (x_pos,y_tot-node_ct*y_interval)
+                node_pos[node] = (x_pos + (np.random.random()-0.5)*0.25,y_tot-node_ct*y_interval)
                 node_ct += 1
 
         taskgraph_args = {}
@@ -352,6 +362,19 @@ class ExperimentGenerator():
                                  'alpha_anneal': 'True', #'True' or 'False'
                                  'flow_lookahead': 'False' #'True' or 'False'
                                  }
+
+        # data about graph topology
+        graph_density = len(edge_list)/(trial_num_nodes*(trial_num_nodes-1))
+        graph_longest_path = len(nx.dag_longest_path(nx_task_graph))
+        #graph_connectivity = nx.algebraic_connectivity(nx_task_graph)
+        nodes_degrees = list(nx_task_graph.degree(list(range(trial_num_nodes))))
+        degrees_only = [deg[1] for deg in nodes_degrees]
+        graph_avg_degree = float(np.sum(degrees_only)/trial_num_nodes)
+
+        taskgraph_args['graph_data'] = {'density': graph_density,
+                                        'longest_path': graph_longest_path,
+                                        #'algebraic_connectivity': graph_connectivity,
+                                        'average_degree': graph_avg_degree}
 
         return taskgraph_args, nx_task_graph, node_pos
 
@@ -493,6 +516,26 @@ class ExperimentGenerator():
                 precise_nodes_condition = True
 
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
+
+    def generate_graph_topology_c(self, prob):
+
+        # Generates random directed acyclic forest with probability of <prob> for each edge
+
+        edge_list = [(u, v) for u in range(1, self.num_nodes) for v in range(u + 1, self.num_nodes) if np.random.uniform(0, 1) <= prob]
+
+        nx_task_graph = nx.DiGraph()
+        nx_task_graph.add_nodes_from(list(range(self.num_nodes)))
+        nx_task_graph.add_edges_from(edge_list)
+
+        #connect all tree trunks to source node
+        for node in range(1,self.num_nodes):
+            if len(list(nx_task_graph.predecessors(node))) == 0:
+                nx_task_graph.add_edge(0, node)
+                edge_list.append((0,node))
+
+        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
+        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, self.num_nodes-1))
+        return nx_task_graph, edge_list, self.num_nodes, None
 
 
 def load_taskgraph_args(filename):

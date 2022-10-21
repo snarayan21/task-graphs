@@ -400,7 +400,7 @@ class TaskGraph:
 
 
         if self.num_tasks < 2:
-            # save best solution in solution object
+            # no valid solution possible under flow-based representation. Save a blank solution
             class CustomSolution:
                 pass
             self.last_baseline_solution = CustomSolution
