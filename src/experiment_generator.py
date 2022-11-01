@@ -61,6 +61,15 @@ class ExperimentGenerator():
         self.experiment_dir.mkdir(parents=True, exist_ok=False)
 
         # GENERATE RANDOM DAG with parameters num_layers, num_layer_nodes_max
+        if 'topology_handle' in exp_args.keys():
+            self.topology_handle = getattr(self, exp_args['topology_handle'])
+        else:
+            self.topology_handle = getattr(self, 'generate_graph_topology_b')
+
+        if 'edge_probability' in exp_args.keys():
+            self.edge_probability = exp_args['edge_probability']
+        else:
+            self.edge_probability = 0.5
         self.num_layers = exp_args['num_layers']
         self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
         if 'num_nodes' in exp_args.keys():
@@ -250,8 +259,7 @@ class ExperimentGenerator():
 
 
     def generate_taskgraph_args(self):
-        #nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_b()
-        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.generate_graph_topology_c(prob=0.4)
+        nx_task_graph, edge_list, trial_num_nodes, frontiers_list = self.topology_handle()
         if frontiers_list is None:
             sorted_nodes = list(nx.topological_sort(nx_task_graph))
             num_frontiers = int(np.floor(np.log(trial_num_nodes)))
@@ -517,10 +525,9 @@ class ExperimentGenerator():
 
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
-    def generate_graph_topology_c(self, prob):
-
+    def generate_graph_topology_c(self):
         # Generates random directed acyclic forest with probability of <prob> for each edge
-
+        prob = self.edge_probability
         edge_list = [(u, v) for u in range(1, self.num_nodes) for v in range(u + 1, self.num_nodes) if np.random.uniform(0, 1) <= prob]
 
         nx_task_graph = nx.DiGraph()
