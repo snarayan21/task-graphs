@@ -29,6 +29,11 @@ class ExperimentGenerator():
             self.makespan_constraint = exp_args['makespan_constraint']
         else:
             self.makespan_constraint = 1.0
+        if 'randomize_parameters' in exp_args.keys():
+            self.randomize_parameters = exp_args['randomize_parameters']
+        else:
+            self.randomize_parameters = True # by default, randomize parameters
+
         self.coalition_influence_aggregator = exp_args['coalition_influence_aggregator']
         self.nodewise_coalition_influence_agg_list = None # nodewise list of individual coalition influence aggregation functions ('sum' or 'product')
 
@@ -70,6 +75,11 @@ class ExperimentGenerator():
             self.edge_probability = exp_args['edge_probability']
         else:
             self.edge_probability = 0.5
+
+        if 'degree_mean' in exp_args.keys(): #mean node degree for graph topology b
+            self.degree_mean = exp_args['degree_mean']
+        else:
+            self.degree_mean = 1.78
         self.num_layers = exp_args['num_layers']
         self.num_layer_nodes_max = exp_args['num_layer_nodes_max']
         if 'num_nodes' in exp_args.keys():
@@ -299,7 +309,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['num_robots'] = self.num_robots
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
         taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
-        if self.coalition_influence_aggregator == 'sum':
+        if self.coalition_influence_aggregator == 'sum' or not self.randomize_parameters:
             self.nodewise_coalition_influence_agg_list = ['sum' for _ in range(trial_num_nodes)]
         elif self.coalition_influence_aggregator == 'product':
             self.nodewise_coalition_influence_agg_list = ['product' for _ in range(trial_num_nodes)]
@@ -314,9 +324,10 @@ class ExperimentGenerator():
 
         coalition_types_choices = ['sigmoid_b', 'dim_return', 'polynomial']
         coalition_types_indices = np.random.randint(0,3,(trial_num_nodes,))
+        if not self.randomize_parameters:
+            coalition_types_indices = np.zeros((trial_num_nodes,), dtype=int)
         # sample from coalition types available iteratively to make list of strings
         taskgraph_args_exp['coalition_types'] = [coalition_types_choices[coalition_types_indices[i]] for i in range(trial_num_nodes)]
-
         # sample corresponding parameters within some defined range to the types in the above list
         #taskgraph_args_exp['coalition_params'] = [list(np.random.randint(-2,3,(3,))) for _ in range(trial_num_nodes)]
         M = 3
@@ -325,6 +336,9 @@ class ExperimentGenerator():
             if taskgraph_args_exp['coalition_types'][i] == 'sigmoid_b':
                 w = 0.25+np.random.random()*0.5
                 k = np.random.randint(5,50)
+                if not self.randomize_parameters:
+                    w = 0.5
+                    k = 10
                 p0 = float( M*(1+np.exp(-k)*np.exp(k*w)) * (1+np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)) )
                 p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
                 coalition_params.append([p0,float(k),w,p3])
@@ -343,7 +357,9 @@ class ExperimentGenerator():
 
         # sample from dependency types available -- list of strings
         influence_types_choices = ['sigmoid_b', 'dim_return']
-        influence_types_indices = np.random.randint(0,2,(num_edges,)) # TODO IMPLEMENT SIGMOID
+        influence_types_indices = np.random.randint(0,2,(num_edges,))
+        if not self.randomize_parameters:
+            influence_types_indices = np.zeros((num_edges,), dtype=int)
         taskgraph_args_exp['dependency_types'] = [influence_types_choices[influence_types_indices[i]] for i in range(num_edges)]
 
         # sample corresponding parameters within some defined range to the types in the above list
@@ -352,6 +368,9 @@ class ExperimentGenerator():
             if taskgraph_args_exp['dependency_types'][i] == 'sigmoid_b':
                 w = 0.25+np.random.random()*5
                 k = np.random.randint(1,10)
+                if not self.randomize_parameters:
+                    w = 2.5
+                    k = 5
                 p0 = float(M*(1+np.exp(k*w))/np.exp(k*w))
                 p3 = float(M/np.exp(k*w))
                 dependency_params.append([p0,float(k),w,p3])
@@ -471,8 +490,11 @@ class ExperimentGenerator():
             frontiers_list.append(old_layer[1:])
 
             for layer in range(1,num_layers):
-                #generate 1 to num_layer_nodes_max nodes for new layer
-                new_layer_size = np.random.randint(1, num_layer_nodes_max+1)
+                # sample size of new layer
+                new_layer_size = 0
+                while new_layer_size < 1:
+                    mean_layer_size = int(self.num_nodes/self.num_layers)
+                    new_layer_size = int(np.random.normal(loc=mean_layer_size,scale=mean_layer_size/5))#np.random.randint(1, num_layer_nodes_max+1)
                 new_layer = np.arange(cur_node,cur_node + new_layer_size)
                 for new_node in new_layer:
                     node_list.append(new_node)
@@ -488,12 +510,22 @@ class ExperimentGenerator():
                     choosing connection in a manner that considers all of old layer rather
                     than on a node by node basis. (None of these methods are implemented yet)
                     """
-                    num_edges = np.random.randint(1,new_layer_size+1) #from old_node
-                    edge_destinations = np.random.choice(new_layer, num_edges, replace=False)
+                    num_edges = 0
+                    while num_edges < 1:
+                        num_edges = int(np.random.normal(loc=self.degree_mean, scale=self.degree_mean/4))#np.random.randint(1,new_layer_size+1) #from old_node
+                    if num_edges > len(new_layer):
+                        edge_destinations = np.copy(new_layer)
+                        np.random.shuffle(edge_destinations)
+                        if edge_destinations is None:
+                            breakpoint()
+                        #edge_destinations_append = np.random.choice(new_layer, num_edges-len(new_layer), replace=False)
+                        #edge_destinations = np.append(edge_destinations,edge_destinations_append)
+                    else:
+                        edge_destinations = np.random.choice(new_layer, num_edges, replace=False)
+
                     connected_new_nodes = np.append(connected_new_nodes, edge_destinations)
                     for edge_destination in edge_destinations:
                         edge_list.append((int(old_node), int(edge_destination)))
-
                 #check if new layer nodes all have connected, if not, connect to earlier nodes
                 unconnected_new_nodes = np.setdiff1d(new_layer, np.unique(connected_new_nodes).astype(int))
                 for node in unconnected_new_nodes:
