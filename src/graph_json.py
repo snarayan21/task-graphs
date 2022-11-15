@@ -35,7 +35,7 @@ def main():
 
     # create a list of dicts, one for each experiment, with aggregated data for each result category over all trials
     agg_data_dict_list = []
-    norm_method = 'minlp_reward' # 'minlp_reward' 'dual' 'greedy' or 'none'
+    norm_method = 'none' # 'minlp_reward' 'dual' 'greedy' or 'none'
 
 
     # aggregate data from each trial into a dict of lists for each experiment
@@ -114,15 +114,17 @@ def main():
     # retrieve list of independent variables
     if args.g=='makespan':
         ind_var = 'makespan_constraint'
-    if args.g=='n_tasks':
+    elif args.g=='n_tasks':
         ind_var = 'num_tasks'
-    if args.g=='n_agents':
+    elif args.g=='n_agents':
         ind_var = 'num_robots'
+    else:
+        ind_var = args.g
     makespan = 0
     x_list = []
     for exp in all_data.keys():
         for trial in all_data[exp].keys():
-            x_list.append(all_data[exp][trial]['args']['exp'][ind_var])
+            x_list.append(all_data[exp][trial]['args']['graph_data'][ind_var])
             makespan = all_data[exp][trial]['args']['exp']['makespan_constraint']
             break
 
@@ -159,7 +161,7 @@ def main():
         xticks = [0.2,0.4,0.6,0.8,1.0]
 
 
-    if args.g=='n_tasks':
+    elif args.g=='n_tasks':
         ind_var = 'num_tasks'
         fig, axs = plt.subplots(num_plots,1,figsize=(4,num_plots*4)) #with 4.8 for right fig, 4 for left fig
         #titles = ['Reward (Normalized) vs. Number of Tasks', 'Computation time vs. Number of Tasks']
@@ -172,7 +174,7 @@ def main():
         plt.gcf().subplots_adjust(left=0.2)
 
 
-    if args.g=='n_agents':
+    elif args.g=='n_agents':
         ind_var = 'num_robots'
         fig, axs = plt.subplots(1,num_plots,figsize=(4*num_plots,4))
         titles = ['Reward vs. No. Agents', 'Comp. Time vs. No. Agents']
@@ -180,12 +182,18 @@ def main():
         xticks = [2,4,6,10,15,20]
         plt.gcf().subplots_adjust(bottom=0.2,wspace=0.4)
 
+    else:
+         fig, axs = plt.subplots(1,num_plots,figsize=(4*num_plots,4))
+         titles = [('Reward vs. ' + ind_var), ('Comp. time vs. ' + ind_var)]
+         x_label = ind_var
+         xticks = None
+
 
     legend_list = ['Flow: NLP', 'Flow: Greedy', 'MINLP']
     linestyles = ['-', '--', '-.']
     colors = ['blue','green','red']
     #titles = [(ind_var + ' vs reward'), (ind_var + ' vs computation time (s)')]
-    y_labels = ['Reward (Normalized by MINLP)', 'Computation time (s)']
+    y_labels = ['Reward', 'Computation time (s)']
     for ax_id in range(num_plots):
         max_mean = 0.0
         for d in range(3):
@@ -195,30 +203,47 @@ def main():
             mean = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_mean')])[plot_mask]
             if np.max(mean) > max_mean:
                 max_mean = np.max(mean)
-            #axs[ax_id].plot(x_list, mean, label=legend_list[d],color=colors[d])
+            axs[ax_id].plot(x_list, mean, label=legend_list[d],color=colors[d])
             std = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_std')])[plot_mask]
-            axs[ax_id].errorbar(np.array(x_list)[plot_mask] + (-0.1+0.05*d), mean, yerr=std, label=legend_list[d],color=colors[d],elinewidth=1.5, capsize=3, linestyle=linestyles[d],linewidth=3)
-            if ax_id==0:
+            axs[ax_id].errorbar(np.array(x_list)[plot_mask], mean, yerr=std, color=colors[d],elinewidth=1.5, capsize=3, linestyle=linestyles[d],linewidth=3)
+
+            scatter = True
+            if scatter:
                 x_list_ext = []
                 y_list_ext = []
                 for j in range(len(x_list)):
-                    if x_list[j] == 20:
-                        x_list_ext.extend([x_list[j] for _ in range(len(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j]))])
-                        y_list_ext.extend(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j])
-                #axs[ax_id].scatter(x_list_ext,y_list_ext)
-                #axs[ax_id].fill_between(x_list, mean+std, mean-std, color=colors[d], alpha=0.2)
+                    x_list_ext.extend([x_list[j] for _ in range(len(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j]))])
+                    y_list_ext.extend(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j])
+                kk = 0
+                while kk < (len(x_list_ext)):
+                    if y_list_ext[kk] > 5000 or np.isnan(y_list_ext[kk]) or np.isinf(y_list_ext[kk]):
+                        y_list_ext.pop(kk)
+                        x_list_ext.pop(kk)
+                    else:
+                        kk = kk + 1
+                axs[ax_id].scatter(x_list_ext, y_list_ext, label=legend_list[d], color=colors[d])
+                draw_fit_line = True
+                if draw_fit_line:
+                    # ++++++++++++ FIT LINES +++++++++++++
+                    fit_line = np.poly1d(np.polyfit(x_list_ext,y_list_ext,1))
+                    fit_x = np.linspace(np.min(x_list_ext), np.max(x_list_ext))
+                    axs[ax_id].plot(fit_x,fit_line(fit_x),color=colors[d])
+                    #axs[ax_id].fill_between(x_list, mean+std, mean-std, color=colors[d], alpha=0.2)
                 print("ALL DATA ", legend_list[d])
                 print(x_list_ext)
                 print(y_list_ext)
-            axs[ax_id].set_xticks(xticks)
-            #axs[ax_id].legend()
+            if xticks is not None:
+                axs[ax_id].set_xticks(xticks)
+            axs[ax_id].legend()
             axs[ax_id].set_ylabel(y_labels[ax_id])
             axs[ax_id].set_xlabel(x_label)
             axs[ax_id].title.set_text(titles[ax_id])
         # for k in range(len(all_data.keys())):
         #     axs[ax_id].text(x_list[k],y_data_dict[(dep_vars[ax_id*3] + '_mean')][k]*1.05,str(trials_minlp_failed[k]))
         ylims = [[0,1.1*max_mean],[-.5,1.1*max_mean]]
+        #ylims = [[0,300],[-.5,1.1*max_mean]]
         axs[ax_id].set_ylim(ylims[ax_id])
+
     plt.show()
     #create output data for heatmap
     output = {}
