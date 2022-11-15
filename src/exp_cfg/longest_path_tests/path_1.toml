@@ -1,0 +1,15 @@
+[exp]
+exp_name = 'tasks_15_exp'
+num_trials = 5
+num_layers = 1
+num_robots = 4
+num_layer_nodes_max = 100
+num_nodes = 15
+run_ddp = false
+coalition_influence_aggregator = 'mix'
+makespan_constraint = 0.6
+topology_handle = 'generate_graph_topology_b'
+degree_mean = 2.0
+
+from_file = false
+filename = ''
