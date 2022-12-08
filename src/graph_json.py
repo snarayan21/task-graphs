@@ -124,7 +124,7 @@ def main():
     x_list = []
     for exp in all_data.keys():
         for trial in all_data[exp].keys():
-            x_list.append(all_data[exp][trial]['args']['graph_data'][ind_var])
+            x_list.append(all_data[exp][trial]['args']['exp'][ind_var])
             makespan = all_data[exp][trial]['args']['exp']['makespan_constraint']
             break
 
