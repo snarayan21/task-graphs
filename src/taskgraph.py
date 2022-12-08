@@ -39,7 +39,8 @@ class TaskGraph:
                  makespan_constraint=10000,
                  minlp_time_constraint=False,
                  minlp_reward_constraint=False,
-                 run_minlp=True):
+                 run_minlp=True,
+                 warm_start=True):
 
         self.max_steps = max_steps
         self.num_tasks = num_tasks
@@ -56,7 +57,7 @@ class TaskGraph:
         self.task_graph.add_edges_from(edges)
         self.num_edges = len(edges)  # number of edges
 
-        self.edges = edges
+        self.edges = [edge for edge in self.task_graph.edges]
         self.coalition_params = coalition_params
         self.coalition_types = coalition_types
         self.dependency_params = dependency_params
@@ -64,6 +65,7 @@ class TaskGraph:
         self.aggs = aggs
 
         self.run_minlp = run_minlp
+        self.warm_start = warm_start
 
         if task_times is None:
             task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
@@ -248,48 +250,10 @@ class TaskGraph:
         self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
-        """
-        if self.minlp_time_constraint:
-            if self.last_baseline_solution is not None:
-                s, finish_times = self.time_task_execution(self.last_baseline_solution.x)
-                constraint_time = np.max(finish_times)
-                status = ""
-                constraint_buffer = 0
-                while status != "optimal" and status != "timelimit":
-                    minlp_obj = self.initialize_minlp_obj()
-                    cons_list = []
-                    for k in range(self.num_tasks):
-                        cons_list.append(minlp_obj.model.addCons(minlp_obj.f_k[k] <= constraint_time+constraint_buffer))
-
-                    minlp_obj.model.optimize()
-
-                    constraint_buffer = constraint_buffer + 0.1
-                    print(constraint_buffer)
-                    status = minlp_obj.model.getStatus()
-
-                    if constraint_buffer>50:
-                        break
-
-                self.minlp_obj = minlp_obj
-                self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
-            else:
-                raise(NotImplementedError, "MINLP solve must be called after baseline solve when time constraint is used")
-
-        if self.minlp_reward_constraint:
-            if self.last_baseline_solution is not None:
-                self.minlp_obj = self.initialize_minlp_obj()
-                constraint_reward = -1*self.reward_model.flow_cost(self.last_baseline_solution.x)
-                self.minlp_obj.model.addCons(self.minlp_obj.z >= constraint_reward)
-            else:
-                raise(NotImplementedError, "MINLP solve must be called after baseline solve when reward constraint is used")
-            self.minlp_obj.model.optimize()
-            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
-        if not self.minlp_time_constraint and not self.minlp_reward_constraint:
-            self.minlp_obj.model.optimize()
-            self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
-        """
         self.minlp_timeout = 600
         self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
+        if self.warm_start:
+            self.minlp_warm_start(self.pruned_rounded_baseline_solution)
         self.minlp_obj.model.optimize()
         status = self.minlp_obj.model.getStatus()
         try:
@@ -346,6 +310,95 @@ class TaskGraph:
         self.minlp_info_dict = self.translate_minlp_objective(self.last_minlp_solution)
         self.minlp_makespan = self.minlp_info_dict['makespan']
 
+
+    def minlp_warm_start(self, flow):
+        x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
+        o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
+        z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
+        s_len = self.num_tasks
+        f_len = self.num_tasks
+
+        flow_x = np.zeros((x_len,))
+        flow_o = np.zeros((o_len,))
+        flow_z = np.zeros((z_len,))
+        flow_s = np.zeros((s_len,))
+        flow_f = np.zeros((f_len,))
+
+        ind_x_ak = np.reshape(np.arange(x_len), (self.num_robots, self.num_tasks + 1))
+        # reshape o_akk so that o_akk[a, k+1, k'] = 1 --> agent a performs task k' immediately after task k
+        ind_o_akk = np.reshape(np.arange(o_len), (self.num_robots, self.num_tasks+1, self.num_tasks))
+        ind_z_ak = np.reshape(np.arange(z_len), (self.num_robots, self.num_tasks + 1))
+
+        flow_solution = self.num_robots*np.copy(flow)
+
+        # each agent completes its dummy task
+        for a in range(self.num_robots):
+            flow_x[ind_x_ak[a,0]] = 1
+
+        ################# BEGIN DEPTH-FIRST GRAPH TRAVERSAL BY AGENT ##################
+        # depth-first graph traversal for each agent
+        for a in range(self.num_robots):
+            cur_node = 0
+            max_iter = 1000
+            cur_iter = 0
+            stop_condition = False
+            while not stop_condition:
+                out_edges = list(self.task_graph.out_edges(cur_node))
+                out_edge_inds = [list(self.task_graph.edges).index(edge) for edge in out_edges]
+
+                if len(out_edges) == 0: # if no outgoing edges, it is the agent's last task
+                    flow_z[ind_z_ak[a,cur_node+1]] = 1
+                    stop_condition = True
+
+                for ind in out_edge_inds:
+                    if flow_solution[ind] >= 1:
+                        out_node = self.edges[ind][1]
+                        flow_x[ind_x_ak[a,out_node+1]] = 1
+                        flow_o[ind_o_akk[a,cur_node+1,out_node]] = 1
+                        if cur_node == 0: #if robot is assigned a task, bring it to node 0 and assign it task 0
+                            flow_x[ind_x_ak[a,1]] = 1
+                            flow_o[ind_o_akk[a,0,0]] = 1
+                        cur_node = out_node
+                        flow_solution[ind] = flow_solution[ind] - 1
+                        stop_condition = False
+                        break
+                    else:
+                        stop_condition = True  # if nowhere to go, stop condition will remain true at end of loop
+
+                if stop_condition:
+                    if cur_node == 0:
+                        flow_z[ind_z_ak[a,0]] = 1
+                    else:
+                        flow_z[ind_z_ak[a,cur_node+1]] = 1
+
+                cur_iter += 1
+                if cur_iter > max_iter:
+                    #breakpoint()
+                    break
+        ################# END DEPTH-FIRST GRAPH TRAVERSAL BY AGENT ##################
+
+        start_times, end_times = self.time_task_execution(flow)
+        end_times_conservative = [t if t>0 else 500 for t in end_times ]
+        end_times_conservative[0] = 0 #task 0 takes 0 time
+        for task in range(self.num_tasks):
+            flow_s[task] = start_times[task]
+            flow_f[task] = end_times_conservative[task]
+
+        # populate z vector for agents that were not assigned tasks
+        for a in range(self.num_robots):
+            if not flow_o[ind_o_akk[a,0,0]]:
+                flow_z[ind_z_ak[a,0]] = 1
+
+
+        warm_sol = self.minlp_obj.model.createSol()
+        vars = self.minlp_obj.model.getVars()
+        full_soln = np.concatenate((flow_x, flow_o, flow_z, flow_s, flow_f))
+        for (var, var_ind) in zip(vars,range(len(full_soln))):
+            self.minlp_obj.model.setSolVal(warm_sol,var,full_soln[var_ind])
+        self.minlp_obj.model.setSolVal(warm_sol,self.minlp_obj.z, -1*self.reward_model.flow_cost(self.pruned_rounded_baseline_solution))
+        check_result = self.minlp_obj.model.checkSol(warm_sol)
+        accepted = self.minlp_obj.model.addSol(warm_sol,free=False)
+        return np.zeros((x_len+o_len+z_len+s_len+f_len,))
     def solve_graph_minlp_dummy(self):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
         o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
@@ -400,7 +453,7 @@ class TaskGraph:
 
 
         if self.num_tasks < 2:
-            # save best solution in solution object
+            # no valid solution possible under flow-based representation. Save a blank solution
             class CustomSolution:
                 pass
             self.last_baseline_solution = CustomSolution
@@ -767,7 +820,7 @@ class TaskGraph:
                     task_start_times[current_node] = 0.0
                     incomplete_nodes.append(current_node)
                 else:
-                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if (flow[incoming_edge_inds[i]]>0.000001)])
+                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
             else:
                 task_start_times[current_node] = 0
             task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]

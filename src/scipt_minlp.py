@@ -71,7 +71,7 @@ class MRTA_XD():
 
         self.ind_x_ak = np.reshape(np.arange(x_len), (self.num_robots, self.num_tasks + 1)) # reshape so each row contains x_ak for agent a))
         self.ind_o_akk = np.reshape(np.arange(o_len), (self.num_robots, self.num_tasks+1, self.num_tasks))
-        # reshape o_akk so that o_akk[a, k-1, k'] = 1 --> agent a performs task k' immediately after task k
+        # reshape o_akk so that o_akk[a, k+1, k'] = 1 --> agent a performs task k' immediately after task k
         # index 0 in dimension 2 is for the dummy tasks. self-edges not included for dummy tasks, but included for all others
         self.ind_z_ak = np.reshape(np.arange(z_len), (self.num_robots, self.num_tasks + 1))
 
@@ -151,8 +151,10 @@ class MRTA_XD():
             for k_p in range(len(self.in_nbrs)):
                 for k in self.in_nbrs[k_p]:
                     #print("Task ", k ," must precede task ", k_p)
-                    is_task_completed = quicksum([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
-                    self.model.addCons(is_task_completed*(self.s_k[k_p]-self.f_k[k]) >= 0)
+                    #only apply constraint when both tasks are completed by at least one agent
+                    is_task_completed_a = quicksum([self.x_ak[self.ind_x_ak[a, k+1]] for a in range(self.num_robots)])
+                    is_task_completed_b = quicksum([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
+                    self.model.addCons(is_task_completed_a*is_task_completed_b*(self.s_k[k_p]-self.f_k[k]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
         for a in range(self.num_robots):
