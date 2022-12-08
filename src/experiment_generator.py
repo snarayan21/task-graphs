@@ -21,6 +21,10 @@ class ExperimentGenerator():
             self.run_minlp = exp_args['run_minlp']
         else:
             self.run_minlp = True
+        if 'warm_start' in exp_args.keys():
+            self.warm_start = exp_args['warm_start']
+        else:
+            self.warm_start = True
         if 'num_robots' in exp_args.keys():
             self.num_robots = exp_args['num_robots']
         else:
@@ -129,7 +133,6 @@ class ExperimentGenerator():
             print("TRIAL GENERATED")
             task_graph = TaskGraph(**trial_args['exp'])
             print("TASK GRAPH INITIALIZED")
-
             graph_img_file = trial_dir / "graph.jpg"
             label_dict = {}
             for i in range(task_graph.num_tasks):
@@ -383,6 +386,9 @@ class ExperimentGenerator():
 
         taskgraph_args_exp['minlp_time_constraint'] = True #TODO make this a parameter
         taskgraph_args_exp['run_minlp'] = self.run_minlp
+        taskgraph_args_exp['warm_start'] = self.warm_start
+
+
         taskgraph_args['exp'] = taskgraph_args_exp
         taskgraph_args['ddp'] = {'constraint_type': 'qp',
                                  'constraint_buffer': 'soft', #None or 'soft' or 'hard'
