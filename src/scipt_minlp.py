@@ -1,4 +1,3 @@
-import cyipopt
 from pyscipopt import Model, exp, quicksum, quickprod
 import autograd.numpy as np
 from networkx import topological_sort

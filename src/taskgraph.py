@@ -3,7 +3,6 @@ from pydrake.solvers.mathematicalprogram import MathematicalProgram
 from pydrake.solvers.mathematicalprogram import Solve
 import pydrake.math as math
 from scipy.optimize import minimize, LinearConstraint
-import cyipopt
 
 import matplotlib.pyplot as plt
 import matplotlib
