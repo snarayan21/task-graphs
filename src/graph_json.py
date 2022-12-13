@@ -86,7 +86,17 @@ def main():
                         else:
                             norm_data = in_data/float(all_data[exp][trial]['results']['pruned_rounded_greedy_reward'])
                     elif norm_method == 'none':
-                        norm_data = in_data
+                        if args.g == 'warm_start':
+                            if var == 'minlp_reward':
+                                norm_data = in_data - float(all_data[exp][trial]['results']['pruned_rounded_baseline_reward'])
+                                if abs(norm_data) < 0.01:
+                                    print("EXP ", exp, ", TRIAL ", trial, ". MINLP == FLOW")
+                            else:
+                                norm_data = in_data
+                                if var == 'minlp_solution_time' and norm_data < 600:
+                                    print("EXP ", exp, ", TRIAL ", trial, ". MINLP CONVERGED: ", all_data[exp][trial]['args']['exp']['warm_start'])
+                        else:
+                            norm_data = in_data
                     else:
                         raise(NotImplementedError("norm method must be 'minlp_reward', 'dual', or 'none'"))
                     if 'time' in var:
