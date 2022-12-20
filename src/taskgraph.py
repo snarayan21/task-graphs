@@ -461,13 +461,12 @@ class TaskGraph:
 
 
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
-        b = np.zeros(self.num_tasks)
 
         # scipy version
-        # equality flow constraint
+        # inequality flow constraint
         lb2 = np.zeros(self.num_tasks-2)
         ub2 = np.ones(self.num_tasks-2)
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
+        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
 
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
@@ -487,6 +486,115 @@ class TaskGraph:
                 init_val = init_val - 0.1
         self.last_baseline_solution = scipy_result
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
+
+    def solve_graph_iterative_pruning(self, ):
+
+        cur_task_graph = self.task_graph
+        cur_num_tasks = cur_task_graph.num_tasks
+
+        iter_count = 0
+        while iter_count < self.num_tasks:
+
+            cur_inc_mat = nx.linalg.graphmatrix.incidence_matrix(cur_task_graph.task_graph, oriented=True).A
+
+            # SOLVE GRAPH SCIPY
+            # inequality flow constraint
+            lb2 = np.zeros(cur_num_tasks-2)
+            ub2 = np.ones(cur_num_tasks-2)
+            c2 = LinearConstraint(cur_inc_mat[1:-1,:], lb=lb2, ub=ub2)
+
+            # inequality constraint on edge capacity
+            c1 = LinearConstraint(np.eye(cur_task_graph.num_edges),
+                                   lb = np.zeros(cur_task_graph.num_edges),
+                                   ub = np.ones(cur_task_graph.num_edges))
+
+            # inequality constraint on beginning flow
+            c3 = LinearConstraint(cur_inc_mat[0,:],lb=[-1],ub=0)
+            init_val = 0.5
+            constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
+            scipy_result = minimize(cur_task_graph.reward_model.flow_cost, np.ones(cur_task_graph.num_edges)*init_val, constraints=constraints_tuple)
+            print(scipy_result)
+            if scipy_result.success == False:
+                while scipy_result.success==False and init_val >= 0:
+                    print("Re-init scipy with val ", init_val)
+                    scipy_result = minimize(cur_task_graph.reward_model.flow_cost, np.ones(cur_task_graph.num_edges)*init_val, constraints=constraints_tuple)
+                    init_val = init_val - 0.1
+
+            # MAKESPAN CHECK
+            _, task_finish_times = self.time_task_execution(scipy_result)
+            last_finish_time = np.max(np.array(task_finish_times))
+            print("ITERATION ", iter_count, ", MAX_TIME ", last_finish_time, ", CONSTRAINT ", self.makespan_constraint)
+
+            # IF SOLUTION IS VALID, STORE RESULT AND RETUN
+            if last_finish_time <= self.makespan_constraint:
+                self.last_baseline_solution = scipy_result
+                self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
+                break
+
+            # PRUNE GRAPH -- CREATE NEW GRAPH AND EDGE MAPPING
+            cur_task_graph, cur_edge_mapping = self.prune_graph_sequential(cur_task_graph, task_finish_times, self.makespan_constraint)
+            cur_num_tasks = cur_task_graph.num_tasks
+
+            iter_count += 1
+
+    def prune_graph_sequential(self, task_graph, task_finish_times, makespan_constraint):
+
+        to_prune = np.argmax(task_finish_times)
+
+        # create list of pruned indices
+        pruned_tasks = [i for i in range(len(task_finish_times)) if not to_prune[i]]
+
+        pruned_edges = []         # create list of pruned edges
+        pruned_edges_mapping = []         # create mapping from original edges to pruned edges
+        for (edge, edge_ind) in zip(task_graph.edges,range(len(task_graph.edges))):
+            if edge[0] in pruned_tasks and edge[1] in pruned_tasks:
+                pruned_edges.append(edge)
+                pruned_edges_mapping.append(edge_ind)
+
+        # rename edges according to new number of tasks
+        renamed_edges = []
+        for edge in pruned_edges:
+            node_out = pruned_tasks.index(edge[0])
+            node_in = pruned_tasks.index(edge[1])
+            renamed_edges.append((node_out,node_in))
+
+        # assemble new task graph args
+        coalition_types = []
+        coalition_params = []
+        aggs = []
+        coalition_influence_aggs = []
+        for task in pruned_tasks:
+            coalition_types.append(task_graph.coalition_types[task])
+            coalition_params.append(task_graph.coalition_params[task])
+            aggs.append(task_graph.aggs[task])
+            coalition_influence_aggs.append(task_graph.coalition_influence_aggs)
+
+        dependency_types = []
+        dependency_params = []
+        for edge_ind in range(len(pruned_edges)):
+            dependency_types.append(task_graph.dependency_types[pruned_edges_mapping[edge_ind]])
+            dependency_params.append(task_graph.dependency_params[pruned_edges_mapping[edge_ind]])
+
+        # create new task graph
+        new_graph = TaskGraph(
+                 max_steps=self.max_steps,
+                 num_tasks=len(pruned_tasks), # new quantity of tasks
+                 edges=renamed_edges, # new edges
+                 coalition_params=coalition_params,
+                 coalition_types=coalition_types,
+                 dependency_params=dependency_params,
+                 dependency_types=dependency_types,
+                 aggs=aggs,
+                 num_robots=self.num_robots,
+                 coalition_influence_aggregator=self.coalition_influence_aggregator, # 'mix', 'sum', or 'product' -- fine to inherit
+                 nodewise_coalition_influence_agg_list=coalition_influence_aggs,
+                 task_times=self.task_times,
+                 makespan_constraint='cleared', # SHOULD NOT BE USED IN THIS OBJECT -- probably not good if it is used
+                 minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized
+                 minlp_reward_constraint=False
+        )
+
+        return new_graph, pruned_edges_mapping
 
     def round_graph_solution(self, flows):
         ordered_nodes = list(nx.topological_sort(self.task_graph))
