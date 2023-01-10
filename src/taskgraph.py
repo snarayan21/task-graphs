@@ -487,10 +487,11 @@ class TaskGraph:
         self.last_baseline_solution = scipy_result
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
 
-    def solve_graph_iterative_pruning(self, ):
+    def solve_graph_iterative_pruning(self):
 
-        cur_task_graph = self.task_graph
-        cur_num_tasks = cur_task_graph.num_tasks
+        cur_task_graph = self
+        cur_edge_mapping = list(range(self.num_edges))
+        cur_num_tasks = self.num_tasks
 
         iter_count = 0
         while iter_count < self.num_tasks:
@@ -521,35 +522,44 @@ class TaskGraph:
                     init_val = init_val - 0.1
 
             # MAKESPAN CHECK
-            _, task_finish_times = self.time_task_execution(scipy_result)
+            _, task_finish_times = cur_task_graph.time_task_execution(scipy_result.x)
             last_finish_time = np.max(np.array(task_finish_times))
             print("ITERATION ", iter_count, ", MAX_TIME ", last_finish_time, ", CONSTRAINT ", self.makespan_constraint)
 
-            # IF SOLUTION IS VALID, STORE RESULT AND RETUN
+            # IF SOLUTION IS VALID, STORE RESULT AND RETURN
             if last_finish_time <= self.makespan_constraint:
-                self.last_baseline_solution = scipy_result
-                self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
+                # translate result into original edge space
+                original_flow_result = np.zeros((self.num_edges,))
+                for ind in range(len(scipy_result.x)):
+                    original_flow_result[cur_edge_mapping[ind]] = scipy_result.x[ind]
+                self.last_iterative_solution = original_flow_result
+                self.rounded_iterative_solution = self.round_graph_solution(self.last_iterative_solution)
                 break
 
             # PRUNE GRAPH -- CREATE NEW GRAPH AND EDGE MAPPING
-            cur_task_graph, cur_edge_mapping = self.prune_graph_sequential(cur_task_graph, task_finish_times, self.makespan_constraint)
+            cur_task_graph, cur_edge_mapping = self.prune_graph_sequential(cur_task_graph, cur_edge_mapping, task_finish_times, self.makespan_constraint)
             cur_num_tasks = cur_task_graph.num_tasks
 
             iter_count += 1
 
-    def prune_graph_sequential(self, task_graph, task_finish_times, makespan_constraint):
+    def prune_graph_sequential(self, task_graph, old_edge_mapping, task_finish_times, makespan_constraint):
 
-        to_prune = np.argmax(task_finish_times)
-
-        # create list of pruned indices
+        to_prune = [False for _ in range(len(task_finish_times))]
+        to_prune[np.argmax(task_finish_times)] = True
+        print("        PRUNING GRAPH NODES ", to_prune, " with finish times ", task_finish_times[to_prune])
+        # create a pruned list of indices
         pruned_tasks = [i for i in range(len(task_finish_times)) if not to_prune[i]]
 
         pruned_edges = []         # create list of pruned edges
-        pruned_edges_mapping = []         # create mapping from original edges to pruned edges
+        intermediate_edge_mapping = [] # create mapping from old edges to new pruned edges
         for (edge, edge_ind) in zip(task_graph.edges,range(len(task_graph.edges))):
             if edge[0] in pruned_tasks and edge[1] in pruned_tasks:
                 pruned_edges.append(edge)
-                pruned_edges_mapping.append(edge_ind)
+                intermediate_edge_mapping.append(edge_ind)
+
+        # create mapping from current graph edges to original graph edges
+        pruned_edges_mapping = [old_edge_mapping[intermediate_edge_mapping[i]] for i in range(len(pruned_edges))]
+        # TODO NEED TO TEST THIS!!! USE ASSERT TO ENSURE EDGES ACCESSED BOTH WAYS ARE THE SAME
 
         # rename edges according to new number of tasks
         renamed_edges = []
@@ -567,13 +577,13 @@ class TaskGraph:
             coalition_types.append(task_graph.coalition_types[task])
             coalition_params.append(task_graph.coalition_params[task])
             aggs.append(task_graph.aggs[task])
-            coalition_influence_aggs.append(task_graph.coalition_influence_aggs)
+            coalition_influence_aggs.append(task_graph.nodewise_coalition_influence_agg_list[task])
 
         dependency_types = []
         dependency_params = []
         for edge_ind in range(len(pruned_edges)):
-            dependency_types.append(task_graph.dependency_types[pruned_edges_mapping[edge_ind]])
-            dependency_params.append(task_graph.dependency_params[pruned_edges_mapping[edge_ind]])
+            dependency_types.append(self.dependency_types[pruned_edges_mapping[edge_ind]])
+            dependency_params.append(self.dependency_params[pruned_edges_mapping[edge_ind]])
 
         # create new task graph
         new_graph = TaskGraph(
