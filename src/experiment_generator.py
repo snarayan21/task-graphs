@@ -21,6 +21,10 @@ class ExperimentGenerator():
             self.run_minlp = exp_args['run_minlp']
         else:
             self.run_minlp = True
+        if 'iterative_pruning' in exp_args.keys():
+            self.iterative_pruning = exp_args['iterative_pruning']
+        else:
+            self.iterative_pruning = False
         if 'warm_start' in exp_args.keys():
             self.warm_start = exp_args['warm_start']
         else:
@@ -166,6 +170,9 @@ class ExperimentGenerator():
                 baseline_elapsed_time = baseline_fin_time-ddp_fin_time
             else:
                 baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
+
+            if self.iterative_pruning:
+                task_graph.solve_graph_iterative_pruning()
 
             #solve minlp
             if self.run_minlp:
