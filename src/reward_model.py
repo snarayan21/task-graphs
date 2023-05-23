@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-from pydrake.autodiffutils import AutoDiffXd
+#from pydrake.autodiffutils import AutoDiffXd
 import networkx as nx
 import autograd
 import math
@@ -256,8 +256,8 @@ class RewardModel:
         return D_incoming @ f
 
     def sigmoid(self, flow, param):
-        if type(flow) is AutoDiffXd:
-            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2]))) # a/(1+e^(-1*b*(x-c)))
+#        if type(flow) is AutoDiffXd:
+#            return param[0] / (1 + np.exp(-1 * param[1] * (flow - param[2]))) # a/(1+e^(-1*b*(x-c)))
         return param[0] / (1 + math.e ** (-1 * param[1] * (flow - param[2])))
 
     def sigmoid_b(self, flow, param):

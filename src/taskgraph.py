@@ -1,7 +1,4 @@
 import numpy as np
-from pydrake.solvers.mathematicalprogram import MathematicalProgram
-from pydrake.solvers.mathematicalprogram import Solve
-import pydrake.math as math
 from scipy.optimize import minimize, LinearConstraint
 
 import matplotlib.pyplot as plt
@@ -220,33 +217,6 @@ class TaskGraph:
         :return:
         """
         return f
-
-    def initializeSolver(self):
-        '''
-        This function will define variables, functions, and bounds based on the input info
-        :return:
-        '''
-
-        self.prog = MathematicalProgram()
-        self.var_flow = self.prog.NewContinuousVariables(self.num_edges)
-
-        # Define the Opt program
-        # Constraint1: Flow must be positive on all edges and can never exceed 1
-        self.prog.AddConstraint(self.identity,
-                                lb=np.zeros(self.num_edges),
-                                ub=np.ones(self.num_edges),
-                                vars=self.var_flow)
-
-        # Constraint2: The inflow must be equal to outflow at all edges
-        # compute incidence matrix
-        self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph, oriented=True).A
-        b = np.zeros(self.num_tasks)
-        b[0] = -1.0#self.num_robots # flow constrained to sum upto 1
-        b[-1] = 1.0#self.num_robots
-        self.prog.AddLinearEqualityConstraint(self.incidence_mat, b, self.var_flow)
-
-        # now for the cost
-        self.prog.AddCost(self.reward_model_estimate.flow_cost, vars=self.var_flow)
 
     def solve_graph_minlp(self):
         self.minlp_timeout = 600
@@ -776,16 +746,6 @@ class TaskGraph:
         self.buffer_hist = buffer_hist
         self.constraint_violation = constraint_violations
 
-    def solveGraph(self):
-        result = Solve(self.prog)
-        print("Success? ", result.is_success())
-        #breakpoint()
-        self.reward_model.flow_cost(result.GetSolution(self.var_flow))
-        print('optimal cost = ', result.get_optimal_cost())
-        print('solver is: ', result.get_solver_id().name())
-        # Compute coalition values,
-        self.flow = result.GetSolution(self.var_flow)
-        print('f* = ', self.flow)
 
     def simulate_task_execution(self):
         """
