@@ -30,8 +30,8 @@ def main():
     with open(args.f, "r") as json_file:
         all_data = json.load(json_file)
 
-    dep_vars = ['pruned_rounded_baseline_reward', 'pruned_rounded_greedy_reward','minlp_reward',
-                'baseline_solution_time','greedy_solution_time','minlp_solution_time']
+    dep_vars = ['pruned_rounded_baseline_reward', 'pruned_rounded_greedy_reward','minlp_reward', 'iterative_pruned_reward',
+                'baseline_solution_time','greedy_solution_time','minlp_solution_time', 'iterative_pruned_solution_time']
 
     # create a list of dicts, one for each experiment, with aggregated data for each result category over all trials
     agg_data_dict_list = []
@@ -63,6 +63,8 @@ def main():
         for var in dep_vars:
             var_list = []
             for trial in all_data[exp].keys():
+                if float(all_data[exp][trial]['results']['minlp_reward']) > 10000:
+                    breakpoint()
                 if (not (np.array(all_data[exp][trial]['results']['pruned_rounded_baseline_solution'],dtype='float') == 0.0).all()) and \
                         (float(all_data[exp][trial]['results']['minlp_reward']) > 0.001 or not exp_minlp_run[exp_ind]) and \
                         np.abs(float(all_data[exp][trial]['results']['pruned_rounded_baseline_reward']))<10e10:
@@ -97,6 +99,11 @@ def main():
                                     print("EXP ", exp, ", TRIAL ", trial, ". MINLP CONVERGED: ", all_data[exp][trial]['args']['exp']['warm_start'])
                         else:
                             norm_data = in_data
+
+                        if var=='iterative_pruned_reward':
+                            #norm_data = in_data - float(all_data[exp][trial]['results']['pruned_rounded_baseline_reward'])
+                            pass
+
                     else:
                         raise(NotImplementedError("norm method must be 'minlp_reward', 'dual', or 'none'"))
                     if 'time' in var:
@@ -137,7 +144,6 @@ def main():
             x_list.append(all_data[exp][trial]['args']['exp'][ind_var])
             makespan = all_data[exp][trial]['args']['exp']['makespan_constraint']
             break
-
     # create dict of y_data lists
     y_data_dict = {}
     for var_name in dep_vars:
@@ -180,7 +186,8 @@ def main():
         x_label = 'Number of Tasks'
         #xticks = [6,8,10,15,20]
         #xticks = [6,8,10,15,20,25,30,35,40]
-        xticks = [8,12,16,20]
+        xticks = [8,10,15,20,25,30,35,40]
+        #xticks = [8,10,15]
         plt.gcf().subplots_adjust(left=0.2)
 
 
@@ -199,22 +206,26 @@ def main():
          xticks = None
 
 
-    legend_list = ['Flow: NLP', 'Flow: Greedy', 'MINLP']
-    linestyles = ['-', '--', '-.']
-    colors = ['blue','green','red']
+    legend_list = ['Flow: NLP', 'Flow: Greedy', 'MINLP', 'Pruned Iterative']
+    linestyles = ['-', '--', '-.', ':']
+    colors = ['blue','green','red', 'cyan']
     #titles = [(ind_var + ' vs reward'), (ind_var + ' vs computation time (s)')]
     y_labels = ['Reward', 'Computation time (s)']
+    num_dep_vars = 4
     for ax_id in range(num_plots):
         max_mean = 0.0
-        for d in range(3):
+        for d in range(num_dep_vars):
             plot_mask = [True for _ in range(len(x_list))]
             if d == 2:
                 plot_mask = exp_minlp_run
-            mean = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_mean')])[plot_mask]
+            mean = np.array(y_data_dict[(dep_vars[ax_id*num_dep_vars + d] + '_mean')])[plot_mask]
+            if d==2 and not np.array(exp_minlp_run).any():
+                continue
+
             if np.max(mean) > max_mean:
                 max_mean = np.max(mean)
             axs[ax_id].plot(x_list, mean, label=legend_list[d],color=colors[d])
-            std = np.array(y_data_dict[(dep_vars[ax_id*3 + d] + '_std')])[plot_mask]
+            std = np.array(y_data_dict[(dep_vars[ax_id*num_dep_vars + d] + '_std')])[plot_mask]
             axs[ax_id].errorbar(np.array(x_list)[plot_mask], mean, yerr=std, color=colors[d],elinewidth=1.5, capsize=3, linestyle=linestyles[d],linewidth=3)
 
             scatter = True
@@ -222,8 +233,8 @@ def main():
                 x_list_ext = []
                 y_list_ext = []
                 for j in range(len(x_list)):
-                    x_list_ext.extend([x_list[j] for _ in range(len(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j]))])
-                    y_list_ext.extend(y_data_dict[(dep_vars[ax_id*3 + d] + '_all')][j])
+                    x_list_ext.extend([x_list[j] for _ in range(len(y_data_dict[(dep_vars[ax_id*num_dep_vars + d] + '_all')][j]))])
+                    y_list_ext.extend(y_data_dict[(dep_vars[ax_id*num_dep_vars + d] + '_all')][j])
                 kk = 0
                 while kk < (len(x_list_ext)):
                     if y_list_ext[kk] > 5000 or np.isnan(y_list_ext[kk]) or np.isinf(y_list_ext[kk]):
@@ -231,8 +242,9 @@ def main():
                         x_list_ext.pop(kk)
                     else:
                         kk = kk + 1
-                axs[ax_id].scatter(x_list_ext, y_list_ext, label=legend_list[d], color=colors[d])
-                draw_fit_line = True
+                #axs[ax_id].scatter(x_list_ext, y_list_ext, label=legend_list[d], color=colors[d])
+                axs[ax_id].boxplot(y_list_ext)
+                draw_fit_line = False
                 if draw_fit_line:
                     # ++++++++++++ FIT LINES +++++++++++++
                     fit_line = np.poly1d(np.polyfit(x_list_ext,y_list_ext,1))
@@ -248,12 +260,12 @@ def main():
             axs[ax_id].set_ylabel(y_labels[ax_id])
             axs[ax_id].set_xlabel(x_label)
             axs[ax_id].title.set_text(titles[ax_id])
+
         # for k in range(len(all_data.keys())):
         #     axs[ax_id].text(x_list[k],y_data_dict[(dep_vars[ax_id*3] + '_mean')][k]*1.05,str(trials_minlp_failed[k]))
         ylims = [[0,1.1*max_mean],[-.5,1.1*max_mean]]
         #ylims = [[0,300],[-.5,1.1*max_mean]]
         axs[ax_id].set_ylim(ylims[ax_id])
-
     plt.show()
     #create output data for heatmap
     output = {}
