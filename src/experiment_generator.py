@@ -151,6 +151,7 @@ class ExperimentGenerator():
             task_graph.solve_graph_greedy()
             greedy_fin_time = time.time()
             greedy_elapsed_time = greedy_fin_time-start
+            last_fin_time = greedy_fin_time
             print("GREEDY SOLUTION FINISHED")
             run_ddp = self.run_ddp
             if run_ddp:
@@ -158,21 +159,22 @@ class ExperimentGenerator():
                 task_graph.initialize_solver_ddp(**trial_args['ddp'])
                 task_graph.solve_ddp()
                 ddp_fin_time = time.time()
-                ddp_elapsed_time = ddp_fin_time-greedy_fin_time
+                ddp_elapsed_time = ddp_fin_time-last_fin_time
+                last_fin_time = ddp_fin_time
                 print("DDP SOLUTION FINISHED")
 
             #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
+            baseline_elapsed_time = baseline_fin_time-last_fin_time
+            last_fin_time = baseline_fin_time
             print("BASELINE SOLUTION FINISHED")
-
-            if run_ddp:
-                baseline_elapsed_time = baseline_fin_time-ddp_fin_time
-            else:
-                baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
 
             if self.iterative_pruning:
                 task_graph.solve_graph_iterative_pruning()
+                iterative_pruning_fin_time = time.time()
+                iterative_pruning_elapsed_time = iterative_pruning_fin_time-last_fin_time
+                last_fin_time = iterative_pruning_fin_time
 
             #solve minlp
             if self.run_minlp:
@@ -246,7 +248,10 @@ class ExperimentGenerator():
                 results_dict['ddp_makespan'] = task_graph.time_task_execution(task_graph.last_ddp_solution)[1][-1]
                 results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
 
-
+            if self.iterative_pruning:
+                results_dict['iterative_pruned_reward'] = -task_graph.reward_model.flow_cost(task_graph.rounded_iterative_solution)
+                results_dict['iterative_pruned_solution'] = task_graph.rounded_iterative_solution
+                results_dict['iterative_pruned_solution_time'] = iterative_pruning_elapsed_time
 
             results_dict['minlp_reward'] = task_graph.last_minlp_solution_val
             results_dict['minlp_solution'] = task_graph.last_minlp_solution
@@ -506,8 +511,8 @@ class ExperimentGenerator():
                 # sample size of new layer
                 new_layer_size = 0
                 while new_layer_size < 1:
-                    mean_layer_size = int(self.num_nodes/self.num_layers)
-                    new_layer_size = int(np.random.normal(loc=mean_layer_size,scale=mean_layer_size/5))#np.random.randint(1, num_layer_nodes_max+1)
+                    mean_layer_size = int(self.num_nodes/(self.num_layers-1))
+                    new_layer_size = int(np.random.normal(loc=mean_layer_size,scale=mean_layer_size/3))#np.random.randint(1, num_layer_nodes_max+1)
                 new_layer = np.arange(cur_node,cur_node + new_layer_size)
                 for new_node in new_layer:
                     node_list.append(new_node)
@@ -560,14 +565,17 @@ class ExperimentGenerator():
             trial_num_nodes = len(node_list)
             nx_task_graph.add_nodes_from(node_list)
             nx_task_graph.add_edges_from(edge_list)
-            print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
-            print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
+
 
             if require_precise_nodes:
+                print("NUM NODES: ", trial_num_nodes)
                 precise_nodes_condition = trial_num_nodes == self.num_nodes
             else:
                 precise_nodes_condition = True
 
+
+        print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
+        print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
         return nx_task_graph, edge_list, trial_num_nodes, frontiers_list
 
     def generate_graph_topology_c(self):
