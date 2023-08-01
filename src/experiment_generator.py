@@ -306,12 +306,10 @@ class ExperimentGenerator():
 
         taskgraph_args = {}
         taskgraph_args_exp = {}
-        taskgraph_args_exp['max_steps'] = 100
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
         taskgraph_args_exp['edges'] = [np.array(edge) for edge in edge_list]
         taskgraph_args_exp['num_robots'] = self.num_robots
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
-        taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
         if self.coalition_influence_aggregator == 'sum' or not self.randomize_parameters:
             self.nodewise_coalition_influence_agg_list = ['sum' for _ in range(trial_num_nodes)]
         elif self.coalition_influence_aggregator == 'product':

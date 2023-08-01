@@ -19,7 +19,6 @@ class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
 
     def __init__(self,
-                 max_steps,
                  num_tasks,
                  edges,
                  coalition_params,
@@ -28,24 +27,21 @@ class TaskGraph:
                  dependency_types,
                  aggs,
                  num_robots,
-                 coalition_influence_aggregator='sum',
                  nodewise_coalition_influence_agg_list = None,
                  task_times=None,
                  makespan_constraint=10000,
-                 minlp_time_constraint=False,
+                 minlp_time_constraint=False, # set to False for no time constraint, set to integer number of seconds for a time constraint
                  minlp_reward_constraint=False,
                  run_minlp=True,
                  warm_start=True):
 
-        self.max_steps = max_steps
         self.num_tasks = num_tasks
         self.num_robots = num_robots
-        self.coalition_influence_aggregator = coalition_influence_aggregator
-        if nodewise_coalition_influence_agg_list is None:
-            self.nodewise_coalition_influence_agg_list = [self.coalition_influence_aggregator for _ in range(self.num_tasks)]
+        self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
+        if not minlp_time_constraint:
+            self.minlp_time_constraint = 10000000000
         else:
-            self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
-        self.minlp_time_constraint = minlp_time_constraint
+            self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
         self.task_graph = nx.DiGraph()
         self.task_graph.add_nodes_from(range(num_tasks))
@@ -86,7 +82,6 @@ class TaskGraph:
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs,
-                                        coalition_influence_aggregator=self.coalition_influence_aggregator,
                                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
 
@@ -126,7 +121,6 @@ class TaskGraph:
             dependency_params=self.dependency_params,
             dependency_types=self.dependency_types,
             influence_agg_func_types=self.aggs,
-            coalition_influence_aggregator=self.coalition_influence_aggregator,
             nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
             reward_model=self.reward_model,
             task_graph=self.task_graph,
@@ -175,7 +169,6 @@ class TaskGraph:
 
         # create new task graph
         new_graph = TaskGraph(
-                 max_steps=self.max_steps,
                  num_tasks=len(pruned_tasks), # new quantity of tasks
                  edges=renamed_edges, # new edges
                  coalition_params=coalition_params,
@@ -184,7 +177,6 @@ class TaskGraph:
                  dependency_types=dependency_types,
                  aggs=aggs,
                  num_robots=self.num_robots,
-                 coalition_influence_aggregator=self.coalition_influence_aggregator,
                  nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
                  task_times=self.task_times,
                  makespan_constraint='cleared', # specify cleared because it is already pruned
@@ -202,8 +194,7 @@ class TaskGraph:
         return f
 
     def solve_graph_minlp(self):
-        self.minlp_timeout = 600
-        self.minlp_obj.model.setParam('limits/time', self.minlp_timeout)
+        self.minlp_obj.model.setParam('limits/time', self.minlp_time_constraint)
         if self.warm_start:
             self.minlp_warm_start(self.pruned_rounded_baseline_solution)
         self.minlp_obj.model.optimize()
