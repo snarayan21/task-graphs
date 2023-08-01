@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
 from reward_model import RewardModel
-from reward_model_estimate import RewardModelEstimate
 from ddp_gym.ddp_gym import DDP
 from copy import copy
 
@@ -90,16 +89,6 @@ class TaskGraph:
                                         coalition_influence_aggregator=self.coalition_influence_aggregator,
                                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
-        # self.reward_model_estimate = RewardModelEstimate(num_tasks=self.num_tasks,
-        #                         num_robots=self.num_robots,
-        #                         task_graph=self.task_graph,
-        #                         coalition_params=coalition_params,
-        #                         coalition_types=coalition_types,
-        #                         dependency_params=dependency_params,
-        #                         dependency_types=dependency_types,
-        #                         influence_agg_func_types=aggs,
-        #                         coalition_influence_aggregator=self.coalition_influence_aggregator,
-        #                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None
@@ -109,16 +98,10 @@ class TaskGraph:
             self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
 
 
-        # variables using in the optimization
-        self.var_flow = None
-
         # variables used during run-time
         self.flow = None
         self.reward = np.zeros(self.num_tasks)
 
-        # variables used for DDP
-        self.alpha_anneal = False
-        self.constraint_buffer = False
 
         #variables used for data logging
         self.last_baseline_solution = None
@@ -614,138 +597,6 @@ class TaskGraph:
                     if np.isnan(new_flow):
                         print("GREEDY SOLUTION FLOW IS NAN")
                         #breakpoint()
-
-
-    def initialize_solver_ddp(self, constraint_type='qp', constraint_buffer='soft', alpha_anneal='True', flow_lookahead='False'):
-        self.alpha_anneal = alpha_anneal
-        self.constraint_buffer = constraint_buffer
-
-        dynamics_func_handle = self.reward_model.get_dynamics_equations()
-        dynamics_func_handle_list = [] #length = num_tasks-1, because no dynamics eqn for first node.
-                                       # entry i corresponds to the equation for the reward at node i+1
-        cost_func_handle_list = []
-        for k in range(1, self.num_tasks):
-            dynamics_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: dynamics_func_handle(x,u,k,additional_x,l_index))
-            cost_func_handle_list.append(lambda x, u, additional_x, l_index, k=k: -1*dynamics_func_handle(x,u,k,additional_x,l_index))
-
-        self.ddp = DDP(dynamics_func_handle_list,#[lambda x, u: dynamics_func_handle(x, u, l) for l in range(self.num_tasks)],  # x(i+1) = f(x(i), u)
-                  cost_func_handle_list,  # l(x, u)
-                  lambda x: -0.0*x,  # lf(x)
-                  100,
-                  1,
-                  pred_time=self.num_tasks - 1,
-                  inc_mat=self.reward_model.incidence_mat,
-                  adj_mat=self.reward_model.adjacency_mat,
-                  edgelist=self.reward_model.edges,
-                  constraint_type=constraint_type,
-                  constraint_buffer=constraint_buffer,
-                  flow_lookahead=flow_lookahead)
-
-        self.last_u_seq = np.zeros((self.num_edges,))#list(range(self.num_edges))
-        self.last_x_seq = np.zeros((self.num_tasks,))
-
-        incoming_nodes = self.ddp.get_incoming_node_list()
-        for l in range(0, self.ddp.pred_time):
-            incoming_x_seq = self.ddp.x_seq_to_incoming_x_seq(self.last_x_seq)
-            incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(self.last_u_seq)
-            incoming_rewards_arr = list(incoming_x_seq[l])
-            incoming_flow_arr = list(incoming_u_seq[l])
-            if l in incoming_nodes[l]:
-                l_ind = incoming_nodes[l].index(l)
-                x = incoming_rewards_arr[l_ind]
-                incoming_rewards_arr.pop(l_ind)
-                additional_x = incoming_rewards_arr
-            else:
-                l_ind = -1
-                additional_x = incoming_rewards_arr
-                x = None
-            #breakpoint()
-
-            self.last_x_seq[l+1] = dynamics_func_handle(x, incoming_flow_arr, l + 1, additional_x,l_ind)
-        print('Initial x_seq: ',self.last_x_seq)
-
-    def solve_ddp(self):
-        i = 0
-        max_iter = 100
-        buffer = 0.1
-        alpha = 0.5
-        threshold = -1
-        delta = np.inf
-        prev_u_seq = copy(self.last_u_seq)
-        reward_history = []
-        constraint_residual = []
-        constraint_violations = []
-        alpha_hist = []
-        buffer_hist = []
-
-
-        while i < max_iter and delta > threshold:
-            #print("new iteration!!!!")
-            #breakpoint()
-            if(self.constraint_buffer == 'True'):
-                buf = buffer - ((buffer * i)/(max_iter-1))
-            else:
-                buf = 0
-
-            if(self.alpha_anneal == 'True'):
-                curr_alpha = (alpha/(i+1)**(1/3))
-
-            k_seq, kk_seq = self.ddp.backward(self.last_x_seq, self.last_u_seq, max_iter, i, buf, curr_alpha)
-            #breakpoint()
-            #np.set_printoptions(suppress=True)
-
-            print("alpha is: ", curr_alpha)
-            self.last_x_seq, self.last_u_seq = self.ddp.forward(self.last_x_seq, self.last_u_seq, k_seq, kk_seq, i, curr_alpha)
-            print("states: ",self.last_x_seq)
-            print("actions: ", self.last_u_seq)
-            i += 1
-            delta = np.linalg.norm(np.array(self.last_u_seq) - np.array(prev_u_seq))
-            print("iteration ", i-1, " delta: ", delta)
-            print("reward: ", np.sum(self.last_x_seq))
-
-            # log data
-            reward_history.append(np.sum(self.last_x_seq))
-            constraint_residual.append(self.get_constraint_residual(self.last_u_seq))
-            alpha_hist.append(curr_alpha)
-            buffer_hist.append(buf)
-            prev_u_seq = copy(self.last_u_seq)
-            
-            #compute constraint violations from last_u_seq
-            inc_mat = self.reward_model.incidence_mat
-            total_violation = 0.0
-            for l in range(self.num_tasks):
-                curr_inc_mat = inc_mat[l]
-                #curr node inflow
-                u = 0.0
-                for j in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[j] == 1):
-                        u += self.last_u_seq[j]
-                #curr node outflow
-                p = 0.0
-                for j in range(len(curr_inc_mat)):
-                    if(curr_inc_mat[j] == -1):
-                        p += self.last_u_seq[j]
-                
-                if(u < 0.0):
-                    total_violation += 0-u
-                if(p < 0.0):
-                    total_violation += 0-p
-                if(u > 1.0):
-                    total_violation += u-1
-                if(p > 1.0):
-                    total_violation += p-1
-
-            constraint_violations.append(total_violation)
-            print("total constraint violation is: ", total_violation)
-
-        self.flow = self.last_u_seq
-        self.last_ddp_solution = self.last_u_seq
-        self.ddp_reward_history = reward_history
-        self.constraint_residual = constraint_residual
-        self.alpha_hist = alpha_hist
-        self.buffer_hist = buffer_hist
-        self.constraint_violation = constraint_violations
-
 
     def simulate_task_execution(self):
         """
