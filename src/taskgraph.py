@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
 from reward_model import RewardModel
-from ddp_gym.ddp_gym import DDP
 from copy import copy
 
 from scipt_minlp import MRTA_XD
@@ -101,10 +100,8 @@ class TaskGraph:
         #variables used for data logging
         self.last_baseline_solution = None
         self.rounded_baseline_solution = None
-        self.last_ddp_solution = None
         self.last_minlp_solution = None
         self.last_minlp_solution_val = None
-        self.ddp_reward_history = None
         self.last_greedy_solution = None
         self.constraint_residual = None
         self.alpha_hist = None
@@ -730,15 +727,6 @@ class TaskGraph:
 
         return candidate_points
 
-    def get_constraint_residual(self, u_seq):
-        incoming_u_seq = self.ddp.u_seq_to_incoming_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to inflow to node i+1
-        outgoing_u_seq = self.ddp.u_seq_to_outgoing_u_seq(u_seq) # NOTE DIFFERENT INDEXING -- index i corresponds to outflow from node i
-        residuals = []
-        for i in range(1,len(incoming_u_seq)):
-            incoming_f = np.sum(incoming_u_seq[i-1])
-            outgoing_f = np.sum(outgoing_u_seq[i])
-            residuals.append(outgoing_f-incoming_f)
-        return np.linalg.norm(np.array(residuals))
 
     def test_minlp(self):
 
