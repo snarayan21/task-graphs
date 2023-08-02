@@ -16,7 +16,6 @@ class ExperimentGenerator():
         exp_args = all_args['exp']
 
         self.num_trials = exp_args['num_trials']
-        self.run_ddp = exp_args['run_ddp']
         if 'run_minlp' in exp_args.keys():
             self.run_minlp = exp_args['run_minlp']
         else:
@@ -148,24 +147,13 @@ class ExperimentGenerator():
             greedy_fin_time = time.time()
             greedy_elapsed_time = greedy_fin_time-start
             print("GREEDY SOLUTION FINISHED")
-            run_ddp = self.run_ddp
-            if run_ddp:
-                #solve with ddp
-                task_graph.initialize_solver_ddp(**trial_args['ddp'])
-                task_graph.solve_ddp()
-                ddp_fin_time = time.time()
-                ddp_elapsed_time = ddp_fin_time-greedy_fin_time
-                print("DDP SOLUTION FINISHED")
 
             #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
             print("BASELINE SOLUTION FINISHED")
 
-            if run_ddp:
-                baseline_elapsed_time = baseline_fin_time-ddp_fin_time
-            else:
-                baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
+            baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
 
             #solve minlp
             if self.run_minlp:
@@ -175,26 +163,6 @@ class ExperimentGenerator():
             minlp_fin_time = time.time()
             minlp_elapsed_time = minlp_fin_time - baseline_fin_time
             print("MINLP SOLUTION FINISHED")
-
-            if run_ddp:
-                ddp_data = trial_dir / "ddp_data.jpg"
-                fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
-                axs[0].plot(task_graph.ddp_reward_history)
-                axs[0].set_ylabel('Reward')
-
-                axs[1].plot(task_graph.constraint_residual)
-                axs[1].set_ylabel('Constraint Residual Norm')
-
-                axs[2].plot(task_graph.alpha_hist)
-                axs[2].set_ylabel('Alpha value')
-
-                axs[3].plot(task_graph.buffer_hist)
-                axs[3].set_ylabel('Buffer value')
-
-                fig.text(0.5, 0.04, 'Iteration #', ha='center')
-                plt.savefig(ddp_data.absolute())
-
-                plt.clf()   # clear plot for next iteration
 
             #log results
             trial_arg_list.append(trial_args)
@@ -232,12 +200,6 @@ class ExperimentGenerator():
             if np.isinf(np.array(results_dict['pruned_rounded_greedy_reward'],results_dict['pruned_rounded_baseline_reward'])).any():
                 pass
                 #breakpoint()
-            if run_ddp:
-                results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
-                results_dict['ddp_solution'] = task_graph.last_ddp_solution
-                results_dict['ddp_solution_time'] = ddp_elapsed_time
-                results_dict['ddp_makespan'] = task_graph.time_task_execution(task_graph.last_ddp_solution)[1][-1]
-                results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
 
 
 

@@ -14,12 +14,11 @@ class RewardModel:
     """
 
     def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list):
+                 dependency_types, influence_agg_func_types, nodewise_coalition_influence_agg_list):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
-        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         #breakpoint()
         self.num_edges = len(self.edges)
@@ -53,7 +52,6 @@ class RewardModel:
 
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
         #var_reward_mean[0] = 0.0
-        #if self.coalition_influence_aggregator == 'product' or self.coalition_influence_aggregator == 'mix':
         var_reward_mean[0] = 1.0
         var_reward_stddev = np.zeros(self.num_tasks, dtype=object)
         var_reward = np.zeros(self.num_tasks, dtype=object)
@@ -273,6 +271,9 @@ class RewardModel:
             val += float(param[i])*flow**i
             #print('poly ', i, flow, val)
         return val
+
+    def exponential(self, flow, param):
+        return (param[0]**0.5)*math.e**(0.5*param[1]*flow)
 
     def null(self, flow, param):
         """
