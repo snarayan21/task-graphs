@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import norm
 #from pydrake.autodiffutils import AutoDiffXd
 import networkx as nx
-import autograd
+#import autograd
 import math
 
 
@@ -213,7 +213,7 @@ class RewardModel:
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
 
-                if np.isscalar(reward_mean) or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox):
+                if np.isscalar(reward_mean): # or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox)
                     task_influence_value.append(task_interdep(reward_mean,
                                                               self.dependency_params[edge_id]))
                 else:
