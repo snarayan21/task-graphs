@@ -9,7 +9,7 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list,
+                 dependency_types,influence_agg_func_types, nodewise_coalition_influence_agg_list,
                  reward_model, task_graph,task_times, makespan_constraint, time_limit=1000):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
@@ -19,7 +19,6 @@ class MRTA_XD():
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
-        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
@@ -206,6 +205,9 @@ class MRTA_XD():
     def polynomial(self, flow, param):
         val = quicksum([float(param[i])*flow**i for i in range(len(param))])
         return val
+
+    def exponential(self, flow, param):
+        return (param[0]**0.5)*exp(0.5*param[1]*flow)
 
     def null(self, flow, param):
         return 0.0
