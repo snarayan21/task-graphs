@@ -11,8 +11,8 @@ from scipt_minlp import MRTA_XD
 
 from autograd import grad
 
+import pdb
 import os
-
 
 class TaskGraph:
     # class for task graphs where nodes are tasks and edges are precedence relationships
@@ -26,13 +26,15 @@ class TaskGraph:
                  dependency_types,
                  aggs,
                  num_robots,
-                 nodewise_coalition_influence_agg_list = None,
+                 nodewise_coalition_influence_agg_list=None,
                  task_times=None,
                  makespan_constraint=10000,
                  minlp_time_constraint=False, # set to False for no time constraint, set to integer number of seconds for a time constraint
                  minlp_reward_constraint=False,
                  run_minlp=True,
-                 warm_start=True):
+                 coalition_influence_aggregator=None,
+                 warm_start=False,
+                 npl=None):
 
         self.num_tasks = num_tasks
         self.num_robots = num_robots
@@ -56,11 +58,14 @@ class TaskGraph:
 
         self.run_minlp = run_minlp
         self.warm_start = warm_start
+        self.coalition_influence_aggregator = coalition_influence_aggregator
 
         if task_times is None:
             task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
             task_times[0] = 0.0
+
         self.task_times = np.array(task_times, dtype='float')
+        print("self.task_times: ", self.task_times)
 
         # makespan constriant is 'cleared' if we have already pruned the graph and are just using this object to
         # calculate pruned solutions
@@ -83,14 +88,15 @@ class TaskGraph:
                                         influence_agg_func_types=aggs,
                                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
 
-
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None
+
         if self.makespan_constraint != 'cleared':
+            print("not cleared")
             if self.run_minlp:
                 self.minlp_obj = self.initialize_minlp_obj()
+            print("pruning graph...")
             self.pruned_graph_list, self.pruned_graph_edge_mappings_list = self.prune_graph()
-
 
         # variables used during run-time
         self.flow = None
@@ -128,6 +134,7 @@ class TaskGraph:
 
 
     def prune_graph(self):
+        print("Pruning Graph...")
         start_times, finish_times = self.time_task_execution(np.ones((self.num_edges,)))
         to_prune = finish_times > self.makespan_constraint
         to_prune_indices = [i for i in range(self.num_tasks) if to_prune[i]]
@@ -138,15 +145,16 @@ class TaskGraph:
         pruned_edges = []         # create list of pruned edges
         pruned_edges_mapping = []         # create mapping from original edges to pruned edges
         for (edge, edge_ind) in zip(self.edges,range(len(self.edges))):
-            if edge[0] in pruned_tasks and edge[1] in pruned_tasks:
+            if int(edge[0]) in pruned_tasks and int(edge[1]) in pruned_tasks:
+                edge = [int(i) for i in edge]
                 pruned_edges.append(edge)
                 pruned_edges_mapping.append(edge_ind)
 
         # rename edges according to new number of tasks
         renamed_edges = []
         for edge in pruned_edges:
-            node_out = pruned_tasks.index(edge[0])
-            node_in = pruned_tasks.index(edge[1])
+            node_out = pruned_tasks.index(int(edge[0]))
+            node_in = pruned_tasks.index(int(edge[1]))
             renamed_edges.append((node_out,node_in))
 
         # assemble new task graph args
@@ -181,6 +189,7 @@ class TaskGraph:
                  minlp_reward_constraint=False
         )
 
+        print("New Graph After Pruning: ", new_graph.task_graph)
         return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
@@ -200,7 +209,7 @@ class TaskGraph:
             self.last_minlp_solution_val = self.minlp_obj.model.getObjVal()
         except:
 
-        #if status != "optimal" and status != "timelimit":
+            # if status != "optimal" and status != "timelimit":
             x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
             o_len = self.num_robots*((self.num_tasks+1)*(self.num_tasks)) #extra dummy task, KEEP duplicates
             z_len = (self.num_tasks + 1)*self.num_robots #each agent can finish on each task -- include dummy task, as agents can do 0 tasks
@@ -215,12 +224,14 @@ class TaskGraph:
             self.minlp_obj_limit = 1000000000
             return
 
-
         self.minlp_dual_bound = self.minlp_obj.model.getDualbound()
         self.minlp_primal_bound = self.minlp_obj.model.getPrimalbound()
         self.minlp_gap = self.minlp_obj.model.getGap()
         self.minlp_obj_limit = self.minlp_obj.model.getObjlimit()
-
+        print(self.minlp_dual_bound)
+        print(self.minlp_primal_bound)
+        print(self.minlp_gap)
+        print(self.minlp_obj_limit)
         xak_list = [self.minlp_obj.model.getVal(self.minlp_obj.x_ak[i]) for i in range(len(self.minlp_obj.x_ak))]
         oakk_list = [self.minlp_obj.model.getVal(self.minlp_obj.o_akk[i]) for i in range(len(self.minlp_obj.o_akk))]
         oakk_np = np.reshape(np.array(oakk_list),(self.num_robots,self.num_tasks+1,self.num_tasks))
@@ -420,7 +431,6 @@ class TaskGraph:
         init_val = 0.5
         constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
-        print(scipy_result)
         if scipy_result.success == False:
             while scipy_result.success==False and init_val >= 0:
                 print("Re-init scipy with val ", init_val)
@@ -479,12 +489,15 @@ class TaskGraph:
             # graph instantiation not pruned -- solve pruned graphs and choose best solution
             pruned_solutions = []
             pruned_rewards = []
+
+
             for g in self.pruned_graph_list:
                 g.solve_graph_greedy()
                 pruned_solutions.append(g.last_greedy_solution)
                 pruned_rewards.append(-g.reward_model.flow_cost(g.last_greedy_solution))
-            best_solution_ind = np.argmax(np.array(pruned_rewards))
 
+
+            best_solution_ind = np.argmax(np.array(pruned_rewards))
             best_flows_pruned = pruned_solutions[best_solution_ind]
             edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
 
@@ -497,8 +510,6 @@ class TaskGraph:
             # save best solution
             self.pruned_greedy_solution = flows
             self.pruned_rounded_greedy_solution = self.round_graph_solution(self.pruned_greedy_solution)
-
-
 
         initial_flow = 1.0
         self.last_greedy_solution = np.zeros((self.num_edges,))
@@ -529,10 +540,7 @@ class TaskGraph:
                     if last_ind != self.num_edges-1:
                         arrays_list.append(np.array(self.last_greedy_solution[last_ind+1:]))
 
-                    #print("input flow inds: ", out_edge_inds, "\n input flow cands: ", f, "\n before: ", self.last_greedy_solution)
-                    #print('arrays_list: ',arrays_list)
                     input_flows = np.concatenate(arrays_list)
-                    #print( "\n after: ", input_flows)
                     rewards = -1*self.reward_model._nodewise_optim_cost_function(input_flows)
                     relevant_costs = np.array(rewards[out_neighbors])
                     return np.sum(relevant_costs)
@@ -551,7 +559,7 @@ class TaskGraph:
                     cand_flow = np.random.rand(num_edges)
                     cand_flow = incoming_flow*cand_flow/np.sum(cand_flow)
                     candidate_flows.append(cand_flow)
-                    cand_flow_rewards.append(node_reward(cand_flow,out_edge_inds,[edge[1] for edge in out_edges]))
+                    cand_flow_rewards.append(node_reward(cand_flow,out_edge_inds,[int(edge[1]) for edge in out_edges]))
 
                 #find best initial state NOTE: finding max reward
                 best_ind = np.argmax(np.array(cand_flow_rewards))
@@ -564,7 +572,7 @@ class TaskGraph:
                 last_state = best_init_state
                 for i in range(max_iter):
                     # take gradient of cost function with respect to edge values
-                    gradient_t = gradient_func(last_state, out_edge_inds, [edge[1] for edge in out_edges])
+                    gradient_t = gradient_func(last_state, out_edge_inds, [int(edge[1]) for edge in out_edges])
                     if np.isnan(gradient_t).any():
                         gradient_t = np.zeros_like(gradient_t)
                         print("WARNING: GRADIENT WAS NAN, REPLACED WITH ZERO")
@@ -577,6 +585,7 @@ class TaskGraph:
                         if new_cand_state[k] <= 0:
                             new_cand_state[k] = 0.00001
                     last_state = incoming_flow*new_cand_state/np.sum(new_cand_state)
+
 
 
                 # update self.last_greedy_solution
@@ -606,31 +615,22 @@ class TaskGraph:
             current_node = frontier_nodes.pop(0)
             incoming_edges = [list(e) for e in self.task_graph.in_edges(current_node)]
             incoming_edge_inds = [self.reward_model.edges.index(e) for e in incoming_edges]
-            # print(current_node)
-            # print(frontier_nodes)
-            # print(incoming_edges)
-            # print([flow[incoming_edge_inds[i]] for i in range(len(incoming_edges))])
-            #incoming_nodes = [n for n in self.task_graph.predecessors(current_node)]
             if len(incoming_edges) > 0:
-                #print("node: ", current_node, " incoming flow: ", )
-
                 if np.array([flow[incoming_edge_inds[i]]<=0.000001 for i in range(len(incoming_edges))]).all():
-                    task_start_times[current_node] = 0.0
+                    task_start_times[int(current_node)] = 0.0
                     incomplete_nodes.append(current_node)
                 else:
-                    task_start_times[current_node] = max([task_finish_times[incoming_edges[i][0]] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
+                    task_start_times[int(current_node)] = max([task_finish_times[int(incoming_edges[i][0])] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
             else:
-                task_start_times[current_node] = 0
-            task_finish_times[current_node] = task_start_times[current_node] + self.task_times[current_node]
+                task_start_times[int(current_node)] = 0
+            task_finish_times[int(current_node)] = task_start_times[int(current_node)] + self.task_times[int(current_node)]
             for n in self.task_graph.neighbors(current_node):
                 if n not in frontier_nodes:
                     frontier_nodes.append(n)
 
         for node in incomplete_nodes:
-            task_finish_times[node] = 0.0
+            task_finish_times[int(node)] = 0.0
         return task_start_times, task_finish_times
-
-
 
 
     def render(self):
@@ -855,4 +855,3 @@ class TaskGraph:
         else:
             info_dict['makespan'] = 0.0
         return info_dict
-
