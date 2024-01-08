@@ -34,6 +34,8 @@ class TaskGraph:
                  run_minlp=True,
                  coalition_influence_aggregator=None,
                  warm_start=False,
+                 real_time_mode=False,
+                 real_time_mode_dict={},
                  npl=None):
 
         self.num_tasks = num_tasks
@@ -76,6 +78,11 @@ class TaskGraph:
             self.makespan_constraint = np.sum(self.task_times)*float(makespan_constraint)
         self.fig = None
 
+        # indicator variable for real-time reallocation mode
+        self.real_time_mode = real_time_mode
+        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward)
+        self.real_time_mode_dict = real_time_mode_dict
+
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
         # will hold our estimate values
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
@@ -86,7 +93,8 @@ class TaskGraph:
                                         dependency_params=dependency_params,
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs,
-                                        nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list)
+                                        nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
+                                        real_time_mode_dict=real_time_mode_dict)
 
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None

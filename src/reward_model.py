@@ -14,13 +14,16 @@ class RewardModel:
     """
 
     def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types, nodewise_coalition_influence_agg_list):
+                 dependency_types, influence_agg_func_types, nodewise_coalition_influence_agg_list, real_time_mode_dict):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
-        #breakpoint()
+
+        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward)
+        self.real_time_mode_dict = real_time_mode_dict
+
         self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
@@ -222,6 +225,16 @@ class RewardModel:
                                                               self.dependency_params[edge_id]))
                     list_ind += 1
             #breakpoint()
+
+        # REAL TIME REALLOCATION MODE ONLY:
+        # if node has incoming tasks that were just completed, add their reward
+        if node_i in list(self.real_time_mode_dict.keys()):
+            ghost_influence_func_handle = getattr(self, self.real_time_mode_dict[node_i][0])
+            ghost_influence_func_params = self.real_time_mode_dict[node_i][1]
+            ghost_influence_reward_val = self.real_time_mode_dict[node_i][2]
+            r = ghost_influence_func_handle(ghost_influence_reward_val, ghost_influence_func_params)
+            task_influence_value.append(r)
+
         #get_mean_std applies the aggregation function to the influence outputs, and ADDS the coalition function val
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
         #print("node coalition (flow): ", node_coalition)

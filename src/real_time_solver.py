@@ -1,6 +1,7 @@
 from taskgraph import TaskGraph
 import networkx as nx
 import numpy as np
+import copy
 
 class RealTimeSolver():
 
@@ -8,10 +9,12 @@ class RealTimeSolver():
         # initialize task graph with arguments
         # keep track of free and busy agents, completed and incomplete tasks, reward
         # model, etc
+        self.original_args = taskgraph_arg_dict
         self.original_task_graph = TaskGraph(**taskgraph_arg_dict)
         self.original_num_tasks = self.original_task_graph.num_tasks
         self.original_num_robots = self.original_task_graph.num_robots
         self.task_completed = [False for _ in range(self.original_num_tasks)]
+        self.task_rewards = [0 for _ in range(self.original_num_tasks)]
         self.agent_functioning = [True for _ in range(self.original_num_robots)]
         self.agent_free = [True for _ in range(self.original_num_robots)]
         self.current_time = 0.0
@@ -22,20 +25,25 @@ class RealTimeSolver():
         self.original_task_graph.solve_graph_scipy()
         # save pruned rounded NLP solution as current solution -- set of flows over edges
         self.current_solution = self.original_task_graph.pruned_rounded_baseline_solution
-        self.agent_assignment, start_times, finish_times = self.get_assignment(self.original_task_graph, self.current_solution)
-        self.ordered_finish_times = np.sort(finish_times)
-        fin_time_inds = np.argsort(finish_times)
+        self.agent_assignment, self.start_times, self.finish_times = self.get_assignment(self.original_task_graph, self.current_solution)
+        self.ordered_finish_times = np.sort(self.finish_times)
+        fin_time_inds = np.argsort(self.finish_times)
         self.ordered_finish_times_inds = fin_time_inds[self.ordered_finish_times>0]
         self.ordered_finish_times = self.ordered_finish_times[self.ordered_finish_times>0]
         print(self.agent_assignment)
-        print(start_times)
-        print(finish_times)
+        print(self.start_times)
         print(self.ordered_finish_times)
         print(self.ordered_finish_times_inds)
 
-        self.tasks_completed = []
 
-    def step(self, completed_tasks, rewards, free_agents, time):
+    def step(self, completed_tasks, inprogress_tasks, rewards, free_agents, time):
+        # inputs:
+        # completed_tasks -- list of task IDs of completed tasks
+        # inprogress_tasks -- list of task IDs of tasks currently in progress
+        # rewards -- list of rewards from completed tasks, same order as completed tasks
+        # free_agents -- list of agent IDs of free agents that have just completed the tasks
+        # time -- float current time
+
         # takes in an update from graph manager node on current graph status.
         # uses update to generate a new task allocation plan
         # NOTE: best to keep everything in terms of the original task graph
@@ -44,6 +52,17 @@ class RealTimeSolver():
         print(f"Completed task rewards: {rewards}")
         print(f"Free agents: {free_agents}")
         print(f"Current time: {time}")
+
+        task_it = 0
+        for task in completed_tasks:
+            self.task_completed[task] = True
+            self.task_rewards[task] = rewards[task_it]
+            task_it += 1
+
+        self.current_time = time
+
+
+
         # need to create an update_reward_model function that plugs in completed task rewards
         pass
 
@@ -54,17 +73,80 @@ class RealTimeSolver():
 
         task_completed = self.ordered_finish_times_inds[self.current_step]
         time = self.ordered_finish_times[self.current_step]
+        inprogress_tasks = []
+        for task in range(self.original_num_tasks):
+            if time > self.start_times[task] and time < self.finish_times[task] and task != task_completed:
+                inprogress_tasks.append(task)
         # for now, get exact expected reward
         all_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(self.original_task_graph.pruned_rounded_baseline_solution)
         reward = all_rewards[task_completed]
         free_agents = self.agent_assignment[task_completed]
         self.current_step += 1
 
-        self.step([task_completed],[reward], free_agents, time)
+        self.step([task_completed], inprogress_tasks, [reward], free_agents, time)
 
         # need list of tasks completed, list of rewards of those tasks, list of free agents
         # that have just finished completed tasks
 
+    def create_new_taskgraph(self, ):
+        # creates a new task graph from old task graph parameters
+        # revises reward model, replacing completed tasks with constant reward values in the influence
+        # functions of future tasks, and replacing in-progress tasks with expected reward values in the
+        # same manner
+        # removes completed and in-progress tasks from the graph
+        # maintains a map from new nodes/edges to old
+        # SIDE NOTE how do we specify multiple source nodes? have to change scipy constraints
+
+        # create copy of original task graph args
+        new_args = copy.deepcopy(self.original_args)
+
+
+        # THIS WON'T WORK BECAUSE THE EDGES ARE NEEDED IN THE REWARD MDOEL CALC
+        # PLAN:
+        # argument into task graph specifying it contains "special nodes" with severed incoming edges
+        # that argument instantiates a reward model with special "ghost edges" -- when the reward model
+        # is called, it includes as one influence edge a constant value (specified) in the argument
+        # this reward model is used to calculate the reward value. Need to ensure it's still differentiable
+        # plug reward values of completed tasks in to reward model
+        # by replacing influence function with a constant polynomial
+        edges_to_delete = [] # each list entry i is the id of an edge that we need to delete
+        ghost_node_params_dict = {}
+        for task in range(self.original_num_tasks):
+            if self.task_completed[task]:
+                # create list of completed task outgoing edge inds
+                outgoing_edges = [list(e) for e in self.original_task_graph.task_graph.out_edges(task)]
+                edges_to_delete.append(outgoing_edges)
+                outgoing_edge_inds = [self.original_task_graph.reward_model.edges.index(e) for e in outgoing_edges]
+
+                # TODO this only works if each outgoing neighbor has only one incoming node that gets completed this step this is probably a valid assumption most of the time? Will only be violated if we want to do batch processing of steps
+                outgoing_neighbors = [outgoing_edges[i][1] for i in range(len(outgoing_edges))]
+                for (nbr, nbr_edge) in zip(outgoing_neighbors, outgoing_edge_inds):
+                    #tuple of (influence_type, influence_params, reward)
+                    ghost_node_params_dict[nbr] = (self.original_args['dependency_types'][nbr_edge],
+                                                   self.original_args['dependency_params'][nbr_edge],
+                                                   self.task_rewards[task])
+            else:
+                edges_to_delete.append([])
+
+        # delete edges from taskgraph args
+        for edge in edges_to_delete.sort(reverse=True): # sort edge ids from highest to lowest to delete them
+            new_args['edges'].pop(edge)
+            new_args['dependency_params'].pop(edge)
+            new_args['dependency_types'].pop(edge)
+
+        # generate mapping of new taskgraph node ids to old taskgraph node ids
+        new_to_old_node_mapping = []
+
+        # generate renamed edgelist of graph corresponding to new node names
+        new_args['edges'] = 0 #TODO
+
+        # remove tasks from taskgraph
+        new_args['coalition_params'] = [new_args['coalition_params'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
+        new_args['coalition_types'] = [new_args['coalition_types'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
+
+        # remove outgoing edges from removed  taskgraph
+        new_args[]
+        # identify frontier tasks by finding tasks with no incoming edges
 
     def get_assignment(self, taskgraph, flow):
         ordered_nodes = list(nx.topological_sort(taskgraph.task_graph))
