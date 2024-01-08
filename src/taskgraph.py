@@ -32,12 +32,14 @@ class TaskGraph:
                  minlp_time_constraint=False, # set to False for no time constraint, set to integer number of seconds for a time constraint
                  minlp_reward_constraint=False,
                  run_minlp=True,
-                 coalition_influence_aggregator=None,
+                 coalition_influence_aggregator=None, #TODO: this is deprecated and no longer used
                  warm_start=False,
                  real_time_mode=False,
-                 real_time_mode_dict={},
+                 real_time_mode_dict=None,
                  npl=None):
 
+        if real_time_mode_dict is None:
+            real_time_mode_dict = {}
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list

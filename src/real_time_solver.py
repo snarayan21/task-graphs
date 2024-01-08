@@ -101,32 +101,23 @@ class RealTimeSolver():
         new_args = copy.deepcopy(self.original_args)
 
 
-        # THIS WON'T WORK BECAUSE THE EDGES ARE NEEDED IN THE REWARD MDOEL CALC
-        # PLAN:
-        # argument into task graph specifying it contains "special nodes" with severed incoming edges
-        # that argument instantiates a reward model with special "ghost edges" -- when the reward model
-        # is called, it includes as one influence edge a constant value (specified) in the argument
-        # this reward model is used to calculate the reward value. Need to ensure it's still differentiable
-        # plug reward values of completed tasks in to reward model
-        # by replacing influence function with a constant polynomial
         edges_to_delete = [] # each list entry i is the id of an edge that we need to delete
         ghost_node_params_dict = {}
         for task in range(self.original_num_tasks):
             if self.task_completed[task]:
                 # create list of completed task outgoing edge inds
                 outgoing_edges = [list(e) for e in self.original_task_graph.task_graph.out_edges(task)]
-                edges_to_delete.append(outgoing_edges)
-                outgoing_edge_inds = [self.original_task_graph.reward_model.edges.index(e) for e in outgoing_edges]
+                edges_to_delete = edges_to_delete + outgoing_edges
 
-                # TODO this only works if each outgoing neighbor has only one incoming node that gets completed this step this is probably a valid assumption most of the time? Will only be violated if we want to do batch processing of steps
+                outgoing_edge_inds = [self.original_task_graph.reward_model.edges.index(e) for e in outgoing_edges]
+                # TODO this only works if each outgoing neighbor has only one incoming node that gets completed this step --
+                #  this is probably a valid assumption most of the time? Will only be violated if we want to do batch processing of steps
                 outgoing_neighbors = [outgoing_edges[i][1] for i in range(len(outgoing_edges))]
                 for (nbr, nbr_edge) in zip(outgoing_neighbors, outgoing_edge_inds):
                     #tuple of (influence_type, influence_params, reward)
                     ghost_node_params_dict[nbr] = (self.original_args['dependency_types'][nbr_edge],
                                                    self.original_args['dependency_params'][nbr_edge],
                                                    self.task_rewards[task])
-            else:
-                edges_to_delete.append([])
 
         # delete edges from taskgraph args
         for edge in edges_to_delete.sort(reverse=True): # sort edge ids from highest to lowest to delete them
@@ -134,19 +125,52 @@ class RealTimeSolver():
             new_args['dependency_params'].pop(edge)
             new_args['dependency_types'].pop(edge)
 
-        # generate mapping of new taskgraph node ids to old taskgraph node ids
-        new_to_old_node_mapping = []
+        # add new source nodes where nodes have no incoming edges
+        nodes_to_keep = [task for task in range(self.original_num_tasks) if not self.task_completed[task]]
+        nodes_without_in_neighbors = []
+        for task in nodes_to_keep:
+            node_has_in_neighbors = False
+            for edge in new_args['edges']: #iterate through edges we're keeping (w/ original names)
+                if task == edge[1]:
+                    node_has_in_neighbors = True
 
-        # generate renamed edgelist of graph corresponding to new node names
-        new_args['edges'] = 0 #TODO
+            if not node_has_in_neighbors:
+                nodes_without_in_neighbors.append(task)
+
+        # add ONE source node that connects to all nodes without incoming neighbors
+        # TODO: may want to generalize this to several new source nodes w/ different agent capacities on each
+        # generate mapping of new taskgraph node ids to old taskgraph node ids
+        # entry of -1 corresponds to NEW node -- no corresponding node on old graph
+        new_to_old_node_mapping = [-1] + [task for task in range(self.original_num_tasks) if not self.task_completed[task]]
+
+        # rename old edges
+        for edge_id in range(len(new_args['edges'])):
+            new_args['edges'][edge_id] = [new_to_old_node_mapping.index(new_args['edges'][edge_id][0]),
+                                          new_to_old_node_mapping.index(new_args['edges'][edge_id][1])]
+
+        # add new edges
+        for node in nodes_without_in_neighbors:
+            new_node_name = new_to_old_node_mapping.index(node)
+            new_args['edges'] = [[0,new_node_name]] + new_args['edges']
+
 
         # remove tasks from taskgraph
         new_args['coalition_params'] = [new_args['coalition_params'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
         new_args['coalition_types'] = [new_args['coalition_types'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
+        new_args['aggs'] = [new_args['aggs'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
+        if new_args['nodewise_coalition_influence_agg_list'] is not None:
+            new_args['nodewise_coalition_influence_agg_list'] = [new_args['nodewise_coalition_influence_agg_list'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
+        new_args['task_times'] = [new_args['task_times'][i] for i in range(self.original_num_tasks) if not self.task_completed[i]]
 
-        # remove outgoing edges from removed  taskgraph
-        new_args[]
-        # identify frontier tasks by finding tasks with no incoming edges
+        # create new taskgraph with args
+        new_task_graph = TaskGraph(**new_args)
+
+        # solve flow problem
+        new_task_graph.solve_graph_scipy()
+
+        # new flow solution
+        new_flow_solution = new_task_graph.pruned_rounded_baseline_solution
+
 
     def get_assignment(self, taskgraph, flow):
         ordered_nodes = list(nx.topological_sort(taskgraph.task_graph))
