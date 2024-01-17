@@ -51,8 +51,8 @@ class TaskGraph:
         self.task_graph = nx.DiGraph()
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
-        self.num_edges = len(edges)  # number of edges
 
+        # below line ensures there are no ordering discrepancies between the taskgraph object and the networkx graph object edges
         self.edges = [edge for edge in self.task_graph.edges]
         self.coalition_params = coalition_params
         self.coalition_types = coalition_types
