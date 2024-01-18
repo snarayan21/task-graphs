@@ -29,17 +29,20 @@ class TaskGraph:
                  nodewise_coalition_influence_agg_list=None,
                  task_times=None,
                  makespan_constraint=10000,
-                 minlp_time_constraint=False, # set to False for no time constraint, set to integer number of seconds for a time constraint
+                 minlp_time_constraint=False,  # set to False for no time constraint, set to integer number of seconds for a time constraint
                  minlp_reward_constraint=False,
                  run_minlp=True,
-                 coalition_influence_aggregator=None, #TODO: this is deprecated and no longer used
+                 coalition_influence_aggregator=None,  #TODO: this is deprecated and no longer used
                  warm_start=False,
                  real_time_mode=False,
-                 real_time_mode_dict=None,
+                 ghost_node_param_dict=None,
+                 source_node_info_dict=None,
                  npl=None):
 
-        if real_time_mode_dict is None:
-            real_time_mode_dict = {}
+        if ghost_node_param_dict is None:
+            ghost_node_param_dict = {}
+        if source_node_info_dict is None:
+            source_node_info_dict = {}
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
@@ -54,6 +57,7 @@ class TaskGraph:
 
         # below line ensures there are no ordering discrepancies between the taskgraph object and the networkx graph object edges
         self.edges = [edge for edge in self.task_graph.edges]
+        self.num_edges = len(self.edges)
         self.coalition_params = coalition_params
         self.coalition_types = coalition_types
         self.dependency_params = dependency_params
@@ -82,8 +86,12 @@ class TaskGraph:
 
         # indicator variable for real-time reallocation mode
         self.real_time_mode = real_time_mode
-        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward)
-        self.real_time_mode_dict = real_time_mode_dict
+        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
+        # empty dict if not real time mode
+        self.ghost_node_param_dict = ghost_node_param_dict
+        # info dict: keys are 'num_source_nodes' and TODO,
+        #  empty if only single source node
+        self.source_node_info_dict = source_node_info_dict
 
         # someday self.reward_model will hold the ACTUAL values for everything, while self.reward_model_estimate
         # will hold our estimate values
@@ -96,7 +104,8 @@ class TaskGraph:
                                         dependency_types=dependency_types,
                                         influence_agg_func_types=aggs,
                                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
-                                        real_time_mode_dict=real_time_mode_dict)
+                                        ghost_node_param_dict=ghost_node_param_dict,
+                                        source_node_info_dict=source_node_info_dict)
 
         self.pruned_graph_list = None
         self.pruned_graph_edge_mappings_list = None

@@ -13,16 +13,32 @@ class RewardModel:
     rewards.
     """
 
-    def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types, nodewise_coalition_influence_agg_list, real_time_mode_dict):
+    def __init__(self,
+                 num_tasks,
+                 num_robots,
+                 task_graph,
+                 coalition_params,
+                 coalition_types,
+                 dependency_params,
+                 dependency_types,
+                 influence_agg_func_types,
+                 nodewise_coalition_influence_agg_list,
+                 ghost_node_param_dict,
+                 source_node_info_dict):
+
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
 
-        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward)
-        self.real_time_mode_dict = real_time_mode_dict
+        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
+        # dictionary is EMPTY if not in real time mode
+        self.ghost_node_param_dict = ghost_node_param_dict
+
+        # info dict: keys are 'num_source_nodes' and TODO,
+        #  empty if only single source node
+        self.source_node_info_dict = source_node_info_dict
 
         self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
@@ -61,7 +77,11 @@ class RewardModel:
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
-        for node_i in range(1,self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward. Is this the desired behavior? this matches the result of summing states from DDP
+        if not self.ghost_node_param_dict: # if dict is empty --> not in real time mode
+            num_source_nodes = 1
+        else:
+            num_source_nodes = self.source_node_info_dict['num_source_nodes']
+        for node_i in range(num_source_nodes, self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward.
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
@@ -228,10 +248,10 @@ class RewardModel:
 
         # REAL TIME REALLOCATION MODE ONLY:
         # if node has incoming tasks that were just completed, add their reward
-        if node_i in list(self.real_time_mode_dict.keys()):
-            ghost_influence_func_handle = getattr(self, self.real_time_mode_dict[node_i][0])
-            ghost_influence_func_params = self.real_time_mode_dict[node_i][1]
-            ghost_influence_reward_val = self.real_time_mode_dict[node_i][2]
+        if node_i in list(self.ghost_node_param_dict.keys()):
+            ghost_influence_func_handle = getattr(self, self.ghost_node_param_dict[node_i][0])
+            ghost_influence_func_params = self.ghost_node_param_dict[node_i][1]
+            ghost_influence_reward_val = self.ghost_node_param_dict[node_i][2]
             r = ghost_influence_func_handle(ghost_influence_reward_val, ghost_influence_func_params)
             task_influence_value.append(r)
 
