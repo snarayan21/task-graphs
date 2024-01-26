@@ -34,7 +34,6 @@ class TaskGraph:
                  run_minlp=True,
                  coalition_influence_aggregator=None,  #TODO: this is deprecated and no longer used
                  warm_start=False,
-                 real_time_mode=False,
                  ghost_node_param_dict=None,
                  source_node_info_dict=None,
                  npl=None):
@@ -84,8 +83,6 @@ class TaskGraph:
             self.makespan_constraint = np.sum(self.task_times)*float(makespan_constraint)
         self.fig = None
 
-        # indicator variable for real-time reallocation mode
-        self.real_time_mode = real_time_mode
         # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
         # empty dict if not real time mode
         self.ghost_node_param_dict = ghost_node_param_dict
@@ -191,6 +188,13 @@ class TaskGraph:
             dependency_types.append(self.dependency_types[pruned_edges_mapping[edge_ind]])
             dependency_params.append(self.dependency_params[pruned_edges_mapping[edge_ind]])
 
+        # rename nodes in ghost_node_param_dict if it exists:
+        new_ghost_node_param_dict = {}
+        if self.ghost_node_param_dict:
+            for key in self.ghost_node_param_dict.keys():
+                new_key = pruned_tasks.index(int(key))
+                new_ghost_node_param_dict[new_key] = self.ghost_node_param_dict[key]
+
         # create new task graph
         new_graph = TaskGraph(
                  num_tasks=len(pruned_tasks), # new quantity of tasks
@@ -205,7 +209,9 @@ class TaskGraph:
                  task_times=self.task_times,
                  makespan_constraint='cleared', # specify cleared because it is already pruned
                  minlp_time_constraint=False, # these shouldn't matter -- MINLP will not be initialized
-                 minlp_reward_constraint=False
+                 minlp_reward_constraint=False,
+                 ghost_node_param_dict=new_ghost_node_param_dict,
+                 source_node_info_dict=self.source_node_info_dict
         )
 
         print("New Graph After Pruning: ", new_graph.task_graph)
@@ -392,17 +398,17 @@ class TaskGraph:
             for g in self.pruned_graph_list:
                 try:
                     g.solve_graph_scipy()
-                except(ValueError):
+                except ValueError as ex:
+                    print("error in solving pruned graph, using custom blank solution")
+                    #import pdb; pdb.set_trace()
                     class CustomSolution:
                         pass
                     g.last_baseline_solution = CustomSolution
-                    g.last_baseline_solution.x = np.zeros((self.num_edges,))
-
+                    g.last_baseline_solution.x = np.zeros((g.num_edges,))
 
                 pruned_solutions.append(g.last_baseline_solution)
                 pruned_rewards.append(-g.reward_model.flow_cost(g.last_baseline_solution.x))
             best_solution_ind = np.argmax(np.array(pruned_rewards))
-            #breakpoint()
 
             best_flows_pruned = pruned_solutions[best_solution_ind].x
             edge_mappings = self.pruned_graph_edge_mappings_list[best_solution_ind]
@@ -435,20 +441,35 @@ class TaskGraph:
         b = np.zeros(self.num_tasks)
 
         # scipy version
-        # equality flow constraint
-        lb2 = np.zeros(self.num_tasks-2)
-        ub2 = np.ones(self.num_tasks-2)
-        c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)  # TODO CHANGE TO LEQ
-
+        # inequality flow constraint
+        # TODO this currently assumes there is only one sink node, the last node. Is this always true???
+        if not self.source_node_info_dict: # only one source node
+            lb2 = np.zeros(self.num_tasks-2)
+            ub2 = np.ones(self.num_tasks-2)
+            c2 = LinearConstraint(self.incidence_mat[1:-1,:], lb=lb2, ub=ub2)
+        else:
+            lb2 = np.zeros(self.num_tasks - (1 + self.source_node_info_dict['num_source_nodes']))
+            ub2 = np.ones(self.num_tasks - (1 + self.source_node_info_dict['num_source_nodes']))
+            c2 = LinearConstraint(self.incidence_mat[self.source_node_info_dict['num_source_nodes']:-1,:], lb=lb2, ub=ub2)
         # inequality constraint on edge capacity
         c1 = LinearConstraint(np.eye(self.num_edges),
                                lb = np.zeros(self.num_edges),
                                ub = np.ones(self.num_edges))
 
+
         # inequality constraint on beginning flow
-        c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
+        if not self.source_node_info_dict: # only one source node
+            c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
+            constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
+        else:
+            print("multiple source nodes!!!")
+            source_lb = [-1*c for c in self.source_node_info_dict['node_capacities'][1:]]
+            source_ub = [-1*c for c in self.source_node_info_dict['node_capacities'][1:]]
+            c3 = LinearConstraint(self.incidence_mat[0,:],lb=-1*self.source_node_info_dict['node_capacities'][0], ub=0.0)
+            c4 = LinearConstraint(self.incidence_mat[1:self.source_node_info_dict['num_source_nodes'],:],lb=source_lb, ub=source_ub)
+            constraints_tuple = tuple(constraint for constraint in [c1,c2,c3,c4] if constraint.A.size != 0)
+
         init_val = 0.5
-        constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
         scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
         if scipy_result.success == False:
             while scipy_result.success==False and init_val >= 0:
@@ -837,8 +858,6 @@ class TaskGraph:
                         print("Agent ", a, " performs task ", k, " and then task ", k_p)
         minlp_objective = np.array(xak_list + oakk_list + zak_list + sk_list + fk_list)
         info_dict = self.translate_minlp_objective(minlp_objective)
-        breakpoint()
-        import pdb; pdb.set_trace()
 
     def translate_minlp_objective(self, x):
         info_dict = {}

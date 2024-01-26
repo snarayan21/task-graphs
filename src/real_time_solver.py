@@ -3,6 +3,7 @@ import networkx as nx
 import numpy as np
 import copy
 import toml
+import matplotlib.pyplot as plt
 
 class RealTimeSolver():
 
@@ -26,22 +27,26 @@ class RealTimeSolver():
         self.original_task_graph.solve_graph_scipy()
         # save pruned rounded NLP solution as current solution -- set of flows over edges
         self.current_solution = self.original_task_graph.pruned_rounded_baseline_solution
+        self.current_nodewise_rewards = self.original_task_graph.reward_model._nodewise_optim_cost_function(self.current_solution)
         self.agent_assignment, self.start_times, self.finish_times = self.get_assignment(self.original_task_graph, self.current_solution)
         self.ordered_finish_times = np.sort(self.finish_times)
         fin_time_inds = np.argsort(self.finish_times)
         self.ordered_finish_times_inds = fin_time_inds[self.ordered_finish_times>0]
         self.ordered_finish_times = self.ordered_finish_times[self.ordered_finish_times>0]
+
+        self.nodepos_dict = self.draw_original_taskgraph(self.current_solution)
         print(self.agent_assignment)
         print(self.start_times)
         print(self.ordered_finish_times)
         print(self.ordered_finish_times_inds)
 
 
-    def step(self, completed_tasks, inprogress_tasks, inprogress_task_times, rewards, free_agents, time):
+    def step(self, completed_tasks, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions, rewards, free_agents, time):
         # inputs:
         # completed_tasks -- list of task IDs of completed tasks
         # inprogress_tasks -- list of task IDs of tasks currently in progress
         # inprogress_task_times -- list of time already spent (s) working on each inprogress task. order same as inprogress_tasks
+        # inprogress_task_coalitions -- list of lists, where list i is the set of agents currently working on task inprogress task i (same order as inprogress_tasks)
         # TODO do we need input of agents working on each of these in progress tasks? or can we get that from initial assignment??
         # rewards -- list of rewards from completed tasks, same order as completed tasks
         # free_agents -- list of agent IDs of free agents that have just completed the tasks
@@ -69,21 +74,62 @@ class RealTimeSolver():
 
         self.current_time = time
 
-        new_task_graph = self.create_new_taskgraph(inprogress_tasks, inprogress_task_times)
+        new_task_graph, new_to_old_node_mapping = self.create_new_taskgraph(inprogress_tasks, inprogress_task_times, inprogress_task_coalitions)
 
         # solve flow problem
         new_task_graph.solve_graph_scipy()
 
         # new flow solution
         new_flow_solution = new_task_graph.pruned_rounded_baseline_solution
+        new_flow_solution_old_edges = [0 for _ in range(len(self.original_task_graph.edges))]
+        updated_inds = []
+        for ind in range(len(new_flow_solution)):
+            edge = new_task_graph.edges[ind]
+            old_edge = (new_to_old_node_mapping[edge[0]], new_to_old_node_mapping[edge[1]])
+            if -1 not in old_edge: # edge exists in original graph
+                try:
+                    old_edge_ind = self.original_task_graph.edges.index(old_edge) # raises ValueError if not in list
+                    updated_inds.append(old_edge_ind)
+                except ValueError:
+                    import pdb; pdb.set_trace()
+                new_flow_solution_old_edges[old_edge_ind] = new_flow_solution[ind]
+
+        for ind in range(len(self.current_solution)):
+            if not (ind in updated_inds):
+                new_flow_solution_old_edges[ind] = self.current_solution[ind]
+
+        old_flow_reward = self.original_task_graph.reward_model.flow_cost(self.current_solution)
+        new_flow_reward = self.original_task_graph.reward_model.flow_cost(new_flow_solution_old_edges)
+        new_flow_reward_new_graph = new_task_graph.reward_model.flow_cost(new_flow_solution)
+        old_flow_reward_nodewise = self.original_task_graph.reward_model._nodewise_optim_cost_function(self.current_solution)
+        new_flow_reward_nodewise = self.original_task_graph.reward_model._nodewise_optim_cost_function(new_flow_solution_old_edges)        # translate new flow solution to original task graph and save
+        new_flow_reward_nodewise_new_graph = new_task_graph.reward_model._nodewise_optim_cost_function(new_flow_solution)
+        # NOTE: after this, the new flow solution may not be valid under flow constraints
+        print(old_flow_reward)
+        print(new_flow_reward)
+        print(new_flow_reward_new_graph)
+        print(old_flow_reward_nodewise)
+        print(new_flow_reward_nodewise)
+        print(new_flow_reward_nodewise_new_graph)
+
+        # old flow solution into new graph
+        old_flow_new_graph = [0.0 for _ in range(len(new_flow_solution))]
+        for (edge, edge_id) in zip(new_task_graph.edges, range(len(new_task_graph.edges))):
+            old_edge = (new_to_old_node_mapping[edge[0]], new_to_old_node_mapping[edge[1]])
+            print("old edge: " + str(old_edge))
+            if old_edge in self.original_task_graph.edges:
+                print(old_edge_ind)
+                old_edge_ind = self.original_task_graph.edges.index(old_edge)
+                old_flow_new_graph[edge_id] = self.current_solution[old_edge_ind]
+
+        proposed_flow = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0]
+        proposed_flow_old_graph = [0.5, 0.5, 0.0, 0.5, 0.0, 0.5, 0.5, 0.0, 0.5, 0.5, 0.5, 1.0]
+        my_rounded_soln = [0.5, 0.5, 0.0, 0.5, 0.25, 0.0, 0.25, 0.75, 0.5, 0.0, 0.5]
+        # TODO AHAAAA THE DEVIL IS IN THE ROUNDING!!!
+        self.draw_new_taskgraph(new_task_graph, new_to_old_node_mapping, my_rounded_soln)
         import pdb; pdb.set_trace()
 
-        # translate new flow solution to original task graph and save
-        # NOTE: after this, the new flow solution may not be valid under flow constraints
 
-
-        # need to create an update_reward_model function that plugs in completed task rewards
-        pass
 
     def sim_step(self):
         # simulates a step forward in time, calls step function with updated graph
@@ -94,22 +140,24 @@ class RealTimeSolver():
         time = self.ordered_finish_times[self.current_step]
         inprogress_tasks = []
         inprogress_task_times = []
+        inprogress_coalitions = []
         for task in range(self.original_num_tasks):
             if time > self.start_times[task] and time < self.finish_times[task] and task != task_completed:
                 inprogress_tasks.append(task)
                 inprogress_task_times.append(time-self.start_times[task])
+                inprogress_coalitions.append(self.agent_assignment[task])
         # for now, get exact expected reward
         all_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(self.original_task_graph.pruned_rounded_baseline_solution)
         reward = all_rewards[task_completed]
         free_agents = self.agent_assignment[task_completed]
         self.current_step += 1
 
-        self.step([task_completed], inprogress_tasks, inprogress_task_times, [reward], free_agents, time)
+        self.step([task_completed], inprogress_tasks, inprogress_task_times, inprogress_coalitions, [reward], free_agents, time)
 
         # need list of tasks completed, list of rewards of those tasks, list of free agents
         # that have just finished completed tasks
 
-    def create_new_taskgraph(self, inprogress_tasks, inprogress_task_times):
+    def create_new_taskgraph(self, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions):
         # creates a new task graph from old task graph parameters
         # revises reward model, replacing completed tasks with constant reward values in the influence
         # functions of future tasks, and replacing in-progress tasks with expected reward values in the
@@ -120,7 +168,7 @@ class RealTimeSolver():
 
         # create copy of original task graph args
         new_args = copy.deepcopy(self.original_args)
-        new_args['edges'] = self.original_task_graph.reward_model.edges # fix any ordering discrepancies
+        new_args['edges'] = copy.deepcopy(self.original_task_graph.reward_model.edges) # fix any ordering discrepancies
 
 
         edges_to_delete_inds = [] # each list entry i is the id of an edge that we need to delete
@@ -157,8 +205,19 @@ class RealTimeSolver():
             new_args['dependency_params'].pop(edge_id)
             new_args['dependency_types'].pop(edge_id)
 
-        # how many new nodes total?
-        num_new_sources = 1 + len(inprogress_tasks)
+
+        # which nodes have incoming flow from a completed task that we need to consider?
+        nodes_with_deleted_incoming_flow = []
+        amount_deleted_incoming_flow = []
+        for i in [j for j in range(len(self.task_completed)) if self.task_completed[j]]:
+            out_neighbors_i = [edge[1] for edge in self.original_task_graph.edges if edge[0]==i]
+            for nbr in out_neighbors_i:
+                if (nbr not in inprogress_tasks) and not self.task_completed[nbr]:
+                    nodes_with_deleted_incoming_flow.append(nbr)
+                    amount_deleted_incoming_flow.append(self.current_solution[self.original_task_graph.edges.index((i, nbr))])
+
+        # how many new nodes total
+        num_new_sources = 1 + len(inprogress_tasks) + len(nodes_with_deleted_incoming_flow)
 
         # add new source node that connects to nodes without incoming edges that are NOT in progress
         nodes_to_keep = [task for task in range(self.original_num_tasks) if not self.task_completed[task]]
@@ -200,8 +259,8 @@ class RealTimeSolver():
                                           new_to_old_node_mapping.index(new_args['edges'][edge_id][1])]
 
         # add new edges
-        cur_source = 1 # start on 1, leave 0 for new source node for free agents
-        for node in inprogress_tasks:
+        cur_source = 1  # start on 1, leave 0 for new source node for free agents
+        for node in (inprogress_tasks + nodes_with_deleted_incoming_flow):
             new_node_name = new_to_old_node_mapping.index(node)
             new_args['edges'] = [[cur_source, new_node_name]] + new_args['edges']
             new_args['dependency_types'] = ['polynomial'] + new_args['dependency_types']
@@ -239,7 +298,16 @@ class RealTimeSolver():
 
         new_args['num_tasks'] = len(new_to_old_node_mapping)
 
-        source_node_info_dict = {'num_source_nodes': num_new_sources}
+        node_capacities = [0.]
+        for coalition in inprogress_task_coalitions:
+            node_capacities.append(len(coalition)/self.original_num_robots)
+        total_inprogress_coalitions = np.sum(np.array(node_capacities))
+        node_capacities[0] = 1 - total_inprogress_coalitions
+
+        node_capacities = node_capacities + amount_deleted_incoming_flow
+
+        source_node_info_dict = {'num_source_nodes': num_new_sources,
+                                 'node_capacities': node_capacities}
         new_args['source_node_info_dict'] = source_node_info_dict
 
         args_file = 'real_time_debug/new_args.toml'
@@ -249,7 +317,7 @@ class RealTimeSolver():
         # create new taskgraph with args
         new_task_graph = TaskGraph(**new_args)
 
-        return new_task_graph
+        return new_task_graph, new_to_old_node_mapping
 
     def get_assignment(self, taskgraph, flow):
         ordered_nodes = list(nx.topological_sort(taskgraph.task_graph))
@@ -297,3 +365,124 @@ class RealTimeSolver():
             task_finish_times[int(node)] = 0.0
         return agent_assignments, task_start_times, task_finish_times
 
+    def draw_original_taskgraph(self, flow_solution):
+
+        sorted_nodes = list(nx.topological_sort(self.original_task_graph.task_graph))
+        num_frontiers = int(np.floor(np.log(self.original_num_tasks)))
+        frontier_width = int(np.floor(self.original_num_tasks/num_frontiers))
+        frontiers_list = []
+        for i in range(num_frontiers):
+            frontiers_list.append(sorted_nodes[i*frontier_width:(i+1)*frontier_width])
+        leftovers = sorted_nodes[num_frontiers*frontier_width:]
+        if len(leftovers) > 0:
+            frontiers_list.append(leftovers)
+
+        #generate node positions
+        node_pos = {}
+        x_tot = 8
+        y_tot = 6
+        n_frontiers = len(frontiers_list)+1
+        node_pos[0] = (0,y_tot/2)
+        frontier_ct = 1
+        for frontier in frontiers_list:
+            x_pos = frontier_ct*(1/n_frontiers)*x_tot
+            frontier_ct += 1
+            n_nodes = len(frontier)
+            y_interval = y_tot/n_nodes
+            node_ct = 1
+            for node in frontier:
+                node_pos[node] = (x_pos + (np.random.random()-0.5)*2,y_tot-node_ct*y_interval)
+                node_ct += 1
+        nodewise_rewards = self.original_task_graph.reward_model._nodewise_optim_cost_function(flow_solution)
+
+        label_dict = {}
+        for i in range(self.original_num_tasks):
+            label_dict[i] = str(i) + '\n' + "{:.2f}".format(-nodewise_rewards[i])
+        #nx.draw_networkx_labels(nx_task_graph, labels=label_dict)
+        graph_img_file = 'real_time_debug/old_graph.jpg'
+        fig, ax = plt.subplots()
+        nx.draw(self.original_task_graph.task_graph, labels=label_dict, pos=node_pos, ax=ax, node_size=1200, alpha=0.4)
+        for (edge, edge_ind) in zip(self.original_task_graph.edges, range(len(self.original_task_graph.edges))):
+            out_node_pos = node_pos[edge[0]]
+            in_node_pos = node_pos[edge[1]]
+            middle_pos = (np.array(in_node_pos)-np.array(out_node_pos))/2 + np.array(out_node_pos) - [0.05,0]
+            ax.text(middle_pos[0],middle_pos[1],str(flow_solution[edge_ind]),fontsize=12)
+            #import pdb; pdb.set_trace()
+        plt.savefig(graph_img_file)
+        plt.clf()
+        return node_pos
+
+    def draw_new_taskgraph(self, new_task_graph, new_to_old_node_mapping, new_flow_solution):
+        total_num_nodes = self.original_num_tasks + new_task_graph.source_node_info_dict['num_source_nodes'] - 1
+        new_pos_dict = {}
+        for key in self.nodepos_dict.keys():
+            if key == 0:
+                new_key = 0
+            elif key not in new_to_old_node_mapping:
+                new_key = -key
+            else:
+                new_key = new_to_old_node_mapping.index(key)
+            new_pos_dict[new_key] = self.nodepos_dict[key]
+
+        #for new_source in range(1, new_task_graph.source_node_info_dict['num_source_nodes']):
+
+
+        edges = copy.deepcopy(new_task_graph.edges)
+        completed_edges = []
+        # add in edges from completed tasks
+        for task in [i for i in range(1,self.original_num_tasks) if self.task_completed[i]]:
+            old_edges = [edge for edge in self.original_task_graph.edges if edge[0]==task]
+            for edge in old_edges:
+                if self.task_completed[edge[1]]:
+                    new_out_node = -edge[1]
+                else:
+                    new_out_node = new_to_old_node_mapping.index(edge[1])
+                print(f"appending new edge: ({-edge[0]},{new_out_node})")
+                edges.append([-edge[0], new_out_node])
+                completed_edges.append(([-edge[0], new_out_node], self.original_task_graph.edges.index(edge)))
+
+        graph = nx.DiGraph()
+        graph.add_edges_from(edges)
+
+        label_dict = {}
+        new_src_cnt = 0
+        for node in graph.nodes:
+            label_dict[node] = str(node)
+            if node not in new_pos_dict.keys():
+                new_pos_dict[node] = (np.random.rand(), new_src_cnt)
+                new_src_cnt += 1
+        colors = ['b' for _ in range(total_num_nodes)]
+        for (node, node_id) in zip(graph.nodes, range(total_num_nodes)):
+            if node < 0:
+                colors[node_id] = 'k'
+            if node in list(range(new_task_graph.source_node_info_dict['num_source_nodes'])):
+                colors[node_id] = 'r'
+            if node == 0:
+                colors[node_id] = 'g'
+
+        nodewise_rewards = new_task_graph.reward_model._nodewise_optim_cost_function(new_flow_solution)
+        print(f"total reward graphed: {-np.sum(nodewise_rewards)}")
+        for i in range(len(nodewise_rewards)):
+            label_dict[i] = label_dict[i] + "\n" + "{:.2f}".format(-nodewise_rewards[i])
+
+
+        fig, ax = plt.subplots()
+        graph_img_file = 'real_time_debug/new_graph.jpg'
+        nx.draw(graph, labels=label_dict, pos=new_pos_dict, ax=ax, node_color=colors, alpha=0.4, node_size=1200)
+
+        for (edge, edge_ind) in zip(new_task_graph.edges, range(len(new_task_graph.edges))):
+            out_node_pos = new_pos_dict[edge[0]]
+            in_node_pos = new_pos_dict[edge[1]]
+            middle_pos = (np.array(in_node_pos)-np.array(out_node_pos))/2 + np.array(out_node_pos) - [0.05,0]
+            ax.text(middle_pos[0],middle_pos[1],str(new_flow_solution[edge_ind]),fontsize=12)
+
+        for edge_tuple in completed_edges:
+            edge = edge_tuple[0]
+            edge_ind = edge_tuple[1]
+            out_node_pos = new_pos_dict[edge[0]]
+            in_node_pos = new_pos_dict[edge[1]]
+            middle_pos = (np.array(in_node_pos)-np.array(out_node_pos))/2 + np.array(out_node_pos) - [0.05,0]
+            ax.text(middle_pos[0],middle_pos[1],str(self.current_solution[edge_ind]),fontsize=12)
+
+        plt.savefig(graph_img_file)
+        plt.clf()
