@@ -59,7 +59,7 @@ class RewardModel:
         #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
-    def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False):
+    def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False, debug=False):
         """
         Computes the cost function value for all the nodes individually based on the flow value
         :param f: shape=(num_edges X 1) , flow value over all edges
@@ -77,7 +77,7 @@ class RewardModel:
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
-        if not self.ghost_node_param_dict: # if dict is empty --> not in real time mode
+        if not self.source_node_info_dict: # if dict is empty --> no new sources
             num_source_nodes = 1
         else:
             num_source_nodes = self.source_node_info_dict['num_source_nodes']
@@ -106,7 +106,8 @@ class RewardModel:
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      incoming_node_rewards,
-                                                                                                     incoming_node_stds)
+                                                                                                     incoming_node_stds,
+                                                                                                     debug=debug)
 
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
@@ -119,7 +120,7 @@ class RewardModel:
         # return task-wise cost (used in optimization)
         return -node_cost_val
 
-    def get_mean_std(self, node_i, rho, deltas):
+    def get_mean_std(self, node_i, rho, deltas, debug=False):
         """ Gets the mean and std deviation of the reward pdf given a coalition and an influence function output
         :arg rho is currently a scalar integer representing the coalition (i.e. the number of robots, in this
          homogeneous case). This should be replaced with a coalition function output, or perhaps the coalition vector
@@ -139,6 +140,8 @@ class RewardModel:
 
         mean = reward_func_val
         std = std_dev_func(reward_func_val)
+        if debug:
+            import pdb; pdb.set_trace()
         return mean, std
 
     def _cvar_cost(self, mean, std):
@@ -248,13 +251,17 @@ class RewardModel:
 
         # REAL TIME REALLOCATION MODE ONLY:
         # if node has incoming tasks that were just completed, add their reward
-        if node_i in list(self.ghost_node_param_dict.keys()):
-            ghost_influence_func_handle = getattr(self, self.ghost_node_param_dict[node_i][0])
-            ghost_influence_func_params = self.ghost_node_param_dict[node_i][1]
-            ghost_influence_reward_val = self.ghost_node_param_dict[node_i][2]
-            r = ghost_influence_func_handle(ghost_influence_reward_val, ghost_influence_func_params)
-            task_influence_value.append(r)
-
+        if str(node_i) in list(self.ghost_node_param_dict.keys()):
+            if self.ghost_node_param_dict[str(node_i)] is None:
+                import pdb; pdb.set_trace()
+            for entry in self.ghost_node_param_dict[str(node_i)]:
+                ghost_influence_func_handle = getattr(self, entry[0])
+                ghost_influence_func_params = entry[1]
+                ghost_influence_reward_val = entry[2]
+                r = ghost_influence_func_handle(ghost_influence_reward_val, ghost_influence_func_params)
+                task_influence_value.append(r)
+        if debug:
+            import pdb; pdb.set_trace()
         #get_mean_std applies the aggregation function to the influence outputs, and ADDS the coalition function val
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
         #print("node coalition (flow): ", node_coalition)

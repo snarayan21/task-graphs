@@ -54,14 +54,21 @@ class TaskGraph:
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
 
+        self.coalition_params = coalition_params
+        self.coalition_types = coalition_types
+        self.aggs = aggs
+
         # below line ensures there are no ordering discrepancies between the taskgraph object and the networkx graph object edges
         self.edges = [edge for edge in self.task_graph.edges]
         self.num_edges = len(self.edges)
-        self.coalition_params = coalition_params
-        self.coalition_types = coalition_types
-        self.dependency_params = dependency_params
-        self.dependency_types = dependency_types
-        self.aggs = aggs
+
+        #edges get randomly reordered in NX graph initialization. re-order corresponding edge vars
+        old_to_new_edge_sorting = [edges.index([e[0],e[1]]) for e in self.edges]
+        self.dependency_params = []
+        self.dependency_types = []
+        for old_edge_ind in old_to_new_edge_sorting:
+            self.dependency_types.append(dependency_types[old_edge_ind])
+            self.dependency_params.append(dependency_params[old_edge_ind])
 
         self.run_minlp = run_minlp
         self.warm_start = warm_start
@@ -95,11 +102,11 @@ class TaskGraph:
         self.reward_model = RewardModel(num_tasks=self.num_tasks,
                                         num_robots=self.num_robots,
                                         task_graph=self.task_graph,
-                                        coalition_params=coalition_params,
-                                        coalition_types=coalition_types,
-                                        dependency_params=dependency_params,
-                                        dependency_types=dependency_types,
-                                        influence_agg_func_types=aggs,
+                                        coalition_params=self.coalition_params,
+                                        coalition_types=self.coalition_types,
+                                        dependency_params=self.dependency_params,
+                                        dependency_types=self.dependency_types,
+                                        influence_agg_func_types=self.aggs,
                                         nodewise_coalition_influence_agg_list=self.nodewise_coalition_influence_agg_list,
                                         ghost_node_param_dict=ghost_node_param_dict,
                                         source_node_info_dict=source_node_info_dict)
@@ -171,7 +178,7 @@ class TaskGraph:
         for edge in pruned_edges:
             node_out = pruned_tasks.index(int(edge[0]))
             node_in = pruned_tasks.index(int(edge[1]))
-            renamed_edges.append((node_out,node_in))
+            renamed_edges.append([node_out, node_in])
 
         # assemble new task graph args
         coalition_types = []
@@ -192,9 +199,10 @@ class TaskGraph:
         new_ghost_node_param_dict = {}
         if self.ghost_node_param_dict:
             for key in self.ghost_node_param_dict.keys():
-                new_key = pruned_tasks.index(int(key))
-                new_ghost_node_param_dict[new_key] = self.ghost_node_param_dict[key]
-
+                if int(key) in pruned_tasks:
+                    new_key = pruned_tasks.index(int(key))
+                    new_ghost_node_param_dict[str(new_key)] = self.ghost_node_param_dict[key]
+        #import pdb; pdb.set_trace()
         # create new task graph
         new_graph = TaskGraph(
                  num_tasks=len(pruned_tasks), # new quantity of tasks
@@ -215,6 +223,7 @@ class TaskGraph:
         )
 
         print("New Graph After Pruning: ", new_graph.task_graph)
+
         return [new_graph], [pruned_edges_mapping]
 
     def identity(self, f):
@@ -493,8 +502,14 @@ class TaskGraph:
 
             out_flows = [flows_mult[i] for i in out_edge_inds]
 
+            # which nodes are source nodes?
+            if self.source_node_info_dict:
+                source_nodes = list(range(self.source_node_info_dict['num_source_nodes']))
+            else:
+                source_nodes = [0]
+
             # calculate total flow to be allotted
-            if curr_node == 0:
+            if curr_node in source_nodes:
                 in_flow_exact = np.sum(out_flows)
                 in_flow = np.around(in_flow_exact)
             else:
@@ -520,6 +535,8 @@ class TaskGraph:
                 if f < 0.0:
                     pass
                 rounded_flows[i] = f
+
+            #import pdb; pdb.set_trace()
 
         return rounded_flows/self.num_robots
 
