@@ -477,8 +477,6 @@ class RealTimeSolver:
 
         # create new taskgraph with args
         new_task_graph = TaskGraph(**new_args)
-        if self.current_step == 7:
-            import pdb; pdb.set_trace()
 
         return new_task_graph, new_to_old_node_mapping
 
