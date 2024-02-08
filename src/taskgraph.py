@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import minimize, LinearConstraint
+from scipy.optimize import minimize, LinearConstraint, Bounds
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -461,31 +461,48 @@ class TaskGraph:
             ub2 = np.ones(self.num_tasks - (1 + self.source_node_info_dict['num_source_nodes']))
             c2 = LinearConstraint(self.incidence_mat[self.source_node_info_dict['num_source_nodes']:-1,:], lb=lb2, ub=ub2)
         # inequality constraint on edge capacity
-        c1 = LinearConstraint(np.eye(self.num_edges),
-                               lb = np.zeros(self.num_edges),
-                               ub = np.ones(self.num_edges))
-
+        # c1 = LinearConstraint(np.eye(self.num_edges),
+        #                        lb = np.zeros(self.num_edges),
+        #                        ub = np.ones(self.num_edges))
+        c1 = Bounds(lb=0.0, ub=1.0)
 
         # inequality constraint on beginning flow
         if not self.source_node_info_dict: # only one source node
             c3 = LinearConstraint(self.incidence_mat[0,:],lb=[-1],ub=0)
-            constraints_tuple = tuple(constraint for constraint in [c1,c2,c3] if constraint.A.size != 0)
+            constraints_tuple = tuple(constraint for constraint in [c2,c3] if constraint.A.size != 0)
         else:
             print("multiple source nodes!!!")
             source_lb = [-1*c for c in self.source_node_info_dict['node_capacities'][1:]]
             source_ub = [-1*c for c in self.source_node_info_dict['node_capacities'][1:]]
             c3 = LinearConstraint(self.incidence_mat[0,:],lb=-1*self.source_node_info_dict['node_capacities'][0], ub=0.0)
             c4 = LinearConstraint(self.incidence_mat[1:self.source_node_info_dict['num_source_nodes'],:],lb=source_lb, ub=source_ub)
-            constraints_tuple = tuple(constraint for constraint in [c1,c2,c3,c4] if constraint.A.size != 0)
+            constraints_tuple = tuple(constraint for constraint in [c2,c3,c4] if constraint.A.size != 0)
 
         init_val = 0.5
-        scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
+        init_flow = np.ones(self.num_edges)*init_val
+        if self.source_node_info_dict:
+            source_ct = 1
+            init_flow = np.zeros(self.num_edges)
+            for node in self.source_node_info_dict['in_progress']:
+                edge_id = self.edges.index((source_ct, node))
+                init_flow[edge_id] = self.source_node_info_dict['node_capacities'][source_ct]
+                source_ct += 1
+
+        scipy_result = minimize(self.reward_model.flow_cost, init_flow, constraints=constraints_tuple, bounds=c1)
         if scipy_result.success == False:
             while scipy_result.success==False and init_val >= 0:
+                print(scipy_result)
                 print("Re-init scipy with val ", init_val)
-                scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple)
+                scipy_result = minimize(self.reward_model.flow_cost, np.ones(self.num_edges)*init_val, constraints=constraints_tuple, bounds=c1)
                 init_val = init_val - 0.1
-        self.last_baseline_solution = scipy_result
+        if scipy_result.success:
+            self.last_baseline_solution = scipy_result
+        else:
+            class CustomSolution:
+                pass
+            self.last_baseline_solution = CustomSolution()
+            self.last_baseline_solution.x = init_flow
+
         self.rounded_baseline_solution = self.round_graph_solution(self.last_baseline_solution.x)
 
     def round_graph_solution(self, flows):
