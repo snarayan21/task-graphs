@@ -269,7 +269,7 @@ class ExperimentGenerator():
         taskgraph_args = {}
         taskgraph_args_exp = {}
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
-        taskgraph_args_exp['edges'] = [np.array(edge) for edge in edge_list]
+        taskgraph_args_exp['edges'] = [[int(edge[0]), int(edge[1])] for edge in edge_list] #[np.array(edge) for edge in edge_list]
         taskgraph_args_exp['num_robots'] = self.num_robots
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
 
