@@ -241,6 +241,8 @@ class RealTimeSolver:
                 break
 
         if len(self.current_ordered_finish_times_inds)==0 or len(self.all_taskgraphs[self.current_step].edges)==1:
+            if len(self.all_taskgraphs[self.current_step].edges)==1 and len(self.current_ordered_finish_times_inds) != 0 :
+                self.task_rewards[task_completed] = self.current_actual_and_expected_rewards[task_completed]
             print("REAL TIME REALLOCATION COMPLETE: NO FURTHER TASKS")
             return True
 
