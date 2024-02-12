@@ -553,8 +553,6 @@ class TaskGraph:
                     pass
                 rounded_flows[i] = f
 
-            #import pdb; pdb.set_trace()
-
         return rounded_flows/self.num_robots
 
     def solve_graph_greedy(self):
