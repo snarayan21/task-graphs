@@ -35,6 +35,7 @@ class RewardModel:
         # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
         # dictionary is EMPTY if not in real time mode
         self.ghost_node_param_dict = ghost_node_param_dict
+        self.nodes_not_completed = []
 
         # info dict: keys are 'num_source_nodes' and TODO,
         #  empty if only single source node
@@ -69,6 +70,15 @@ class RewardModel:
         # total incoming flow into each node
         incoming_flow = self._compute_incoming_flow(f)
 
+        if not self.source_node_info_dict: # if dict is empty --> no new sources
+            num_source_nodes = 1
+        else:
+            num_source_nodes = self.source_node_info_dict['num_source_nodes']
+
+        for node in range(self.num_tasks):
+            if incoming_flow[node] == 0 and node >= num_source_nodes:
+                self.nodes_not_completed.append(node)
+
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
         #var_reward_mean[0] = 0.0
         var_reward_mean[0] = 1.0
@@ -77,10 +87,7 @@ class RewardModel:
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
-        if not self.source_node_info_dict: # if dict is empty --> no new sources
-            num_source_nodes = 1
-        else:
-            num_source_nodes = self.source_node_info_dict['num_source_nodes']
+
         for node_i in range(num_source_nodes, self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward.
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
@@ -238,16 +245,23 @@ class RewardModel:
             #print("edge id: ", edge_id)
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
+                if source_node not in self.nodes_not_completed:
 
-                if np.isscalar(reward_mean): # or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox)
-                    task_influence_value.append(task_interdep(reward_mean,
-                                                              self.dependency_params[edge_id]))
-                else:
-                    # we passed in a list of only incoming edges flow
-                    task_influence_value.append(task_interdep(reward_mean[list_ind],
-                                                              self.dependency_params[edge_id]))
-                    list_ind += 1
-            #breakpoint()
+                    if np.isscalar(reward_mean): # or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox)
+                        task_influence_value.append(task_interdep(reward_mean,
+                                                                  self.dependency_params[edge_id]))
+                    else:
+                        # we passed in a list of only incoming edges flow
+                        task_influence_value.append(task_interdep(reward_mean[list_ind],
+                                                                  self.dependency_params[edge_id]))
+                        list_ind += 1
+                #breakpoint()
+                else: # if source node is not completed
+                    if np.isscalar(reward_mean):
+                        task_influence_value.append(0.0)
+                    else:
+                        task_influence_value.append(0.0)
+                        list_ind += 1
 
         # REAL TIME REALLOCATION MODE ONLY:
         # if node has incoming tasks that were just completed, add their reward
