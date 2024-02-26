@@ -32,7 +32,7 @@ class RealTimeSolver:
         print(f"Original pruned rounded solution: {self.current_solution}")
         self.current_nodewise_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(
             self.current_solution, debug=False)
-        self.original_agent_assignment, self.original_start_times, self.original_finish_times = self.get_assignment(self.original_task_graph, self.current_solution)
+        self.original_agent_assignment, self.original_start_times, self.original_finish_times = self.get_assignment(self.original_task_graph, self.current_solution, list(range(self.original_num_tasks)))
         for task in range(self.original_num_tasks):
             if self.original_finish_times[task] > self.original_task_graph.makespan_constraint:
                 self.current_nodewise_rewards[task] = 0
@@ -62,9 +62,11 @@ class RealTimeSolver:
         self.nodepos_dict = self.draw_original_taskgraph(self.current_solution, self.trial_dir)
 
         self.all_taskgraphs = [self.original_task_graph]
-        self.all_solutions = [self.current_solution]
+        self.all_solutions = [copy.deepcopy(self.current_solution)]
         self.all_node_mappings = [list(range(self.original_num_tasks))]
         self.step_times = [0.0]
+        self.task_done_history = [[0]]
+        self.task_assignment_history = [copy.deepcopy(self.current_agent_assignment)]
 
     def step(self, completed_tasks, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions, rewards,
              free_agents, time):
@@ -90,11 +92,12 @@ class RealTimeSolver:
         print(f"Current time: {time}")
 
         self.step_times.append(time)
-
+        self.task_done_history.append([])
         task_it = 0
         for task in completed_tasks:
             self.task_completed[task] = True
             self.task_rewards[task] = rewards[task_it]
+            self.task_done_history[self.current_step].append(task)
             task_it += 1
 
         # initial source node is automatically always completed when step is called
@@ -109,28 +112,46 @@ class RealTimeSolver:
                 for edge in in_edges:
                     if not self.task_completed[edge[0]]:
                         self.task_completed[edge[0]] = True
+                        self.task_done_history[self.current_step].append(edge[0])
                         if edge[0] in inprogress_tasks:
                             node_to_remove_ind = inprogress_tasks.index(edge[0])
                             inprogress_tasks.pop(node_to_remove_ind)
                             inprogress_task_coalitions.pop(node_to_remove_ind)
                             inprogress_task_times.pop(node_to_remove_ind)
-                        if self.current_finish_times[edge[0]] < self.original_task_graph.makespan_constraint:
-                            self.task_rewards[edge[0]] = self.current_actual_and_expected_rewards[edge[0]]
-                        else:
-                            self.task_rewards[edge[0]] = 0.0
+                        # if self.current_finish_times[edge[0]] < self.original_task_graph.makespan_constraint:
+                        #     self.task_rewards[edge[0]] = self.current_actual_and_expected_rewards[edge[0]]
+                        # else:
+                        #    self.task_rewards[edge[0]] = 0.0
+                        # if task was not completed, it yields zero reward
+                        self.task_rewards[edge[0]] = 0.0
                         self.current_start_times[edge[0]] = 0.0
                         self.current_finish_times[edge[0]] = 0.0
 
                         print(f"PRECEDING TASK {edge[0]} COMPLETED WITH REWARD {self.task_rewards[edge[0]]}, MARKING TASK {edge[0]} AS COMPLETE.")
+
+        for task in inprogress_tasks:
+            in_edges = [e for e in self.original_task_graph.edges if e[1] == task]
+            for edge in in_edges:
+                if not self.task_completed[edge[0]]:
+                    self.task_completed[edge[0]] = True
+                    self.task_done_history[self.current_step].append(edge[0])
+                    self.task_rewards[edge[0]] = 0.0
+
+
         if len(self.task_completed) - sum(self.task_completed) < 2:
             print(f"After task removal, {len(self.task_completed) - sum(self.task_completed)} tasks remain.")
             if not np.all(self.task_completed):
                 for task in range(self.original_num_tasks):
                     if not self.task_completed[task]:
                         if self.current_finish_times[task] < self.original_task_graph.makespan_constraint:
-                            self.task_rewards[task] = self.current_actual_and_expected_rewards[task]
+                            if len(self.current_agent_assignment[task]) > 0:
+                                self.task_rewards[task] = self.current_actual_and_expected_rewards[task]
+                            else:
+                                self.task_rewards[task] = 0.0
+                            self.task_done_history[self.current_step].append(task)
                             print(f"Adding {self.task_rewards[task]} reward for last remaining task {task}, which will be completed in time ")
             print("TERMINATING REAL TIME SOLVER: RETURNING TRUE FOR STEP")
+            self.task_assignment_history.append(copy.deepcopy(self.current_agent_assignment))
             return True
         self.current_time = time
 
@@ -145,11 +166,12 @@ class RealTimeSolver:
         print(f"Initial flow solution: {raw_new_flow_solution}")
         self.all_taskgraphs.append(new_task_graph)
         self.all_node_mappings.append(new_to_old_node_mapping)
-        new_flow_solution = self.check_and_update_solution(raw_new_flow_solution)
+        new_flow_solution, inprogress_coalitions_source_it = self.check_and_update_solution(raw_new_flow_solution)
 
-        new_agent_assignment, new_start_times, new_finish_times = self.get_assignment(new_task_graph, new_flow_solution)
+        new_agent_assignment, new_start_times, new_finish_times = self.get_assignment(new_task_graph, new_flow_solution, new_to_old_node_mapping, inprogress_coalitions_source_it=inprogress_coalitions_source_it)
 
-        print(f"ACT NEW FIN TIMES: {np.array(new_finish_times) + self.current_time}")
+        print(f"new start times on new graph: {new_start_times}")
+        print(f"new finish times on new graph: {new_finish_times}")
 
         if len(new_task_graph.edges)==1:
             best_flow = new_flow_solution
@@ -258,21 +280,27 @@ class RealTimeSolver:
         for i in range(len(new_agent_assignment)):
             old_node_name = new_to_old_node_mapping[i]
             self.current_agent_assignment[old_node_name] = new_agent_assignment[i]
-            if new_start_times[i] != 0.0:
-                self.current_start_times[old_node_name] = new_start_times[i] + self.current_time
             if new_finish_times[i] != 0.0:
+                self.current_start_times[old_node_name] = new_start_times[i] + self.current_time
                 self.current_finish_times[old_node_name] = new_finish_times[i] + self.current_time
+            else: # else fin time of zero indicates task is not assigned this iteration
+                self.current_finish_times[old_node_name] = 0.0
+                self.current_start_times[old_node_name] = 0.0
 
+        for i in range(self.original_num_tasks):
+            if len(self.current_agent_assignment[i]) == 0 and self.current_finish_times[i] > 0:
+                import pdb; pdb.set_trace()
         self.current_ordered_finish_times = np.sort(self.current_finish_times)
         fin_time_inds = np.argsort(self.current_finish_times)
         self.current_ordered_finish_times_inds = fin_time_inds[self.current_ordered_finish_times > self.current_time]
         self.current_ordered_finish_times = self.current_ordered_finish_times[self.current_ordered_finish_times > self.current_time]
         print(f"new agent assignments: {self.current_agent_assignment}")
+        print(f"new start times: {self.current_start_times}")
         print(f"new finish times: {self.current_finish_times}")
         print(f"new task order: {self.current_ordered_finish_times_inds}")
         self.current_actual_and_expected_rewards = current_actual_and_predicted
         self.all_solutions.append(new_flow_solution)
-
+        self.task_assignment_history.append(copy.deepcopy(self.current_agent_assignment))
         if np.all(new_flow_solution == 0.):
             for task in [t for t in range(self.original_num_tasks) if not self.task_completed[t]]:
                 new_task_ind = new_to_old_node_mapping.index(task)
@@ -309,7 +337,10 @@ class RealTimeSolver:
         for task in range(self.original_num_tasks):
             if time > self.current_start_times[task] and time < self.current_finish_times[task] and task != task_completed:
                 inprogress_tasks.append(task)
-                inprogress_task_times.append(time - self.step_times[self.current_step-1]) # time we've worked on task since last time
+                # calculate the time we've worked on the task since starting it or the last step (in the case where
+                # tasks take two steps), whichever is more recent
+                inprogress_task_times.append(time - max(self.current_start_times[task],
+                                                        self.step_times[self.current_step-1]))
                 inprogress_coalitions.append(self.current_agent_assignment[task])
         # for now, get exact expected reward
         all_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(
@@ -320,11 +351,11 @@ class RealTimeSolver:
         #print(f"WOULDA BEEN: {self.current_actual_and_expected_rewards[task_completed]}")
         #print(f"WOULDA BEEN: {all_rewards[task_completed]}")
         free_agents = self.current_agent_assignment[task_completed]
-        remaining_tasks = [i for i in range(self.original_num_tasks) if not self.task_completed[i]]
-        remaining_task_times = [self.original_task_graph.task_times[i] for i in remaining_tasks]
         mission_complete = self.step([task_completed], inprogress_tasks, inprogress_task_times, inprogress_coalitions,
                                      [reward], free_agents, time)
         print(f"original makespan constraint: {self.original_task_graph.makespan_constraint}")
+        remaining_tasks = [i for i in range(self.original_num_tasks) if not self.task_completed[i]]
+        remaining_task_times = [self.original_task_graph.task_times[i] for i in remaining_tasks]
         print(f"Task times remaining: {remaining_task_times} for tasks {remaining_tasks}.")
         if np.all(remaining_task_times > (self.original_task_graph.makespan_constraint-time)):
             print(f"RAN OUT OF TIME: REAL TIME REALLOCATION TERMINATED. Task times remaining: {remaining_task_times} for tasks {remaining_tasks}.")
@@ -372,19 +403,19 @@ class RealTimeSolver:
             new_args['dependency_params'].pop(edge_id)
             new_args['dependency_types'].pop(edge_id)
 
-        # which nodes have incoming flow from a completed task that we need to consider?
-        nodes_with_deleted_incoming_flow = []
+        # which nodes have an incoming edge from a completed task that we need to consider?
+        nodes_with_deleted_incoming_edges = []
         #amount_deleted_incoming_flow = []
         for i in [j for j in range(len(self.task_completed)) if self.task_completed[j]]:
             out_neighbors_i = [edge[1] for edge in self.original_task_graph.edges if edge[0] == i]
             for nbr in out_neighbors_i:
-                if (nbr not in inprogress_tasks) and (nbr not in nodes_with_deleted_incoming_flow) and not self.task_completed[nbr]:
-                    if self.current_solution[self.original_task_graph.edges.index((i, nbr))] > 0.00001:
-                        nodes_with_deleted_incoming_flow.append(nbr)
+                if (nbr not in inprogress_tasks) and (nbr not in nodes_with_deleted_incoming_edges) and not self.task_completed[nbr]:
+                    #if self.current_solution[self.original_task_graph.edges.index((i, nbr))] > 0.00001:
+                    nodes_with_deleted_incoming_edges.append(nbr)
                     #amount_deleted_incoming_flow.append(self.current_solution[self.original_task_graph.edges.index((i, nbr))])
 
         # how many new nodes total
-        num_new_sources = 1 + len(inprogress_tasks) #+ len(nodes_with_deleted_incoming_flow)
+        num_new_sources = 1 + len(inprogress_tasks) #+ len(nodes_with_deleted_incoming_edges)
 
         # add new source node that connects to nodes without incoming edges that are NOT in progress
         nodes_to_keep = [task for task in range(self.original_num_tasks) if not self.task_completed[task]]
@@ -442,7 +473,7 @@ class RealTimeSolver:
 
         # add new edges
         cur_source = 1  # start on 1, leave 0 for new source node for free agents
-        for node in (inprogress_tasks):  # + nodes_with_deleted_incoming_flow):
+        for node in (inprogress_tasks):  # + nodes_with_deleted_incoming_edges):
             new_node_name = new_to_old_node_mapping.index(node)
             new_args['edges'] = [[cur_source, new_node_name]] + new_args['edges']
             new_args['dependency_types'] = ['polynomial'] + new_args['dependency_types']
@@ -452,7 +483,7 @@ class RealTimeSolver:
         # if the only nodes to connect to source are inprogress nodes, then connect the source to
         # all outgoing neighbors of inprogress nodes
         if np.all([node in inprogress_tasks for node in (nodes_to_connect_to_source +
-                  [node for node in nodes_with_deleted_incoming_flow if node not in nodes_to_connect_to_source])]):
+                  [node for node in nodes_with_deleted_incoming_edges if node not in nodes_to_connect_to_source])]):
             for task in inprogress_tasks:
                 new_task_name = new_to_old_node_mapping.index(task)
                 out_nbrs = [e[1] for e in new_args['edges'] if e[0] == new_task_name]
@@ -461,7 +492,7 @@ class RealTimeSolver:
                         nodes_to_connect_to_source.append(new_to_old_node_mapping[out_nbr])
 
         nodes_to_connect_to_source_new_names = []
-        for node in (nodes_to_connect_to_source + [node for node in nodes_with_deleted_incoming_flow if node not in nodes_to_connect_to_source]):
+        for node in (nodes_to_connect_to_source + [node for node in nodes_with_deleted_incoming_edges if node not in nodes_to_connect_to_source]):
             if node not in inprogress_tasks:
                 new_node_name = new_to_old_node_mapping.index(node)
                 nodes_to_connect_to_source_new_names.append(new_node_name)
@@ -507,7 +538,8 @@ class RealTimeSolver:
             new_node_name = new_to_old_node_mapping.index(task)
             old_task_time = self.all_taskgraphs[self.current_step-1].task_times[self.all_node_mappings[self.current_step-1].index(task)]
             new_args['task_times'][new_node_name] = old_task_time - inprogress_task_times[inprogress_tasks.index(task)]
-
+            if new_args['task_times'][new_node_name] < 0:
+                import pdb; pdb.set_trace()
         new_args['num_tasks'] = len(new_to_old_node_mapping)
 
         node_capacities = [0.]
@@ -515,8 +547,6 @@ class RealTimeSolver:
             node_capacities.append(len(coalition) / self.original_num_robots)
         total_inprogress_coalitions = np.sum(np.array(node_capacities))
         node_capacities[0] = 1 - total_inprogress_coalitions
-
-        node_capacities = node_capacities #  + amount_deleted_incoming_flow
 
         source_node_info_dict = {'num_source_nodes': num_new_sources,
                                  'node_capacities': node_capacities,
@@ -541,7 +571,7 @@ class RealTimeSolver:
         new_task_graph = self.all_taskgraphs[self.current_step]
         new_to_old_node_mapping = self.all_node_mappings[self.current_step]
         old_reward_nodewise = new_task_graph.reward_model._nodewise_optim_cost_function(new_flow_solution)
-        _, _, old_fin_times = self.get_assignment(new_task_graph, new_flow_solution)
+        _, _, old_fin_times = self.get_assignment(new_task_graph, new_flow_solution, new_to_old_node_mapping)
         for task in range(new_task_graph.num_tasks):
             if old_fin_times[task] + self.current_time > self.original_task_graph.makespan_constraint:
                 print(f"removing {task} from old solution reward -- finished after deadline")
@@ -622,7 +652,7 @@ class RealTimeSolver:
                     updated_edges[edge_id] = True
             try:
                 print(proposed_solution)
-                _, _, proposed_fin_times = self.get_assignment(new_task_graph, proposed_solution)
+                proposed_assignment, _, proposed_fin_times = self.get_assignment(new_task_graph, proposed_solution, new_to_old_node_mapping, inprogress_coalitions_source_it=graph_ct)
             except Exception as e:
                 print(type(e))
                 print(e)
@@ -633,11 +663,21 @@ class RealTimeSolver:
                 if proposed_fin_times[task] + self.current_time > self.original_task_graph.makespan_constraint:
                     print(f"Task {task} completed after makespan deadline: removing {-proposed_solution_reward_nodewise[task]} reward")
                     proposed_solution_reward_nodewise[task] = 0
+
+            # if an inprogress task's assigned coalition size is changed, it yields zero reward
+            for (inprogress_task, inprogress_id) in zip(new_task_graph.source_node_info_dict['in_progress'], range(len(new_task_graph.source_node_info_dict['in_progress']))):
+                original_task_coalition = new_task_graph.source_node_info_dict['node_capacities'][inprogress_id+1]
+                new_task_coalition = len(proposed_assignment[inprogress_task])/self.original_num_robots
+                if original_task_coalition != new_task_coalition:
+                    print(f"Coalition assigned to inprogress task {inprogress_task} changed -- task cancelled and {proposed_solution_reward_nodewise[inprogress_task]} reward removed")
+                    proposed_solution_reward_nodewise[inprogress_task] = 0.0
+
             proposed_solution_reward = -np.sum(proposed_solution_reward_nodewise)
             print(f"Updated flow solution from graph {graph_ct}: {proposed_solution}")
             print(f"The following edges were updated: {updated_edges}")
             print(f"The updates were: {np.array(proposed_solution)- np.array(new_flow_solution)}")
             print(f"The updated solution reward is {proposed_solution_reward}, a diff of {proposed_solution_reward - old_reward}")
+            old_solution_new_graph_rewards[graph_ct] = proposed_solution_reward
             old_solution_new_graph_rewards[graph_ct] = proposed_solution_reward
             old_solution_new_graph_list[graph_ct] = proposed_solution
 
@@ -647,11 +687,13 @@ class RealTimeSolver:
         if old_solution_new_graph_rewards[best_soln_id] > old_reward:
             print(f"New solution has been replaced with updated solution from step {best_soln_id}")
             #import pdb; pdb.set_trace()
-            return old_solution_new_graph_list[best_soln_id]
+            return old_solution_new_graph_list[best_soln_id], best_soln_id
         print(f"New solution was found to be best. No replacement necessary.")
-        return new_flow_solution
+        return new_flow_solution, self.current_step-1
 
-    def get_assignment(self, taskgraph, flow):
+    def get_assignment(self, taskgraph, flow, new_to_old_node_mapping, inprogress_coalitions_source_it=None):
+        if inprogress_coalitions_source_it is None:
+            inprogress_coalitions_source_it = self.current_step-1
         ordered_nodes = list(nx.topological_sort(taskgraph.task_graph))
         frontier_nodes = []
         task_start_times = np.zeros((taskgraph.num_tasks,))
@@ -661,6 +703,27 @@ class RealTimeSolver:
         nodelist = list(range(taskgraph.num_tasks))
         frontier_nodes.append(nodelist[0])
         incomplete_nodes = []
+
+        inprogress_assigned_agents = []
+        if taskgraph.source_node_info_dict:
+            # first, allocate appropriate agents to inprogress nodes
+            for current_node in range(1, taskgraph.source_node_info_dict['num_source_nodes']):
+                # should only ever be one out neighbor
+                current_source_out_nbrs = [e[1] for e in taskgraph.edges if e[0]==current_node]
+                out_nbr_og_name = new_to_old_node_mapping[current_source_out_nbrs[0]]
+                task_start_times[current_node] = 0
+                agent_assignments[current_node] = copy.deepcopy(self.task_assignment_history[inprogress_coalitions_source_it][out_nbr_og_name])
+                temp_agent_assignments[current_node] = copy.deepcopy(self.task_assignment_history[inprogress_coalitions_source_it][out_nbr_og_name])
+                for agent in agent_assignments[current_node]:
+                    inprogress_assigned_agents.append(agent)
+                ordered_nodes.remove(current_node)
+                print(f"assigning agents {agent_assignments[current_node]} to node {current_node}")
+
+        task_start_times[0] = 0.0
+        agent_assignments[0] = [a for a in list(range(self.original_num_robots)) if a not in inprogress_assigned_agents]
+        temp_agent_assignments[0] = [a for a in list(range(self.original_num_robots)) if a not in inprogress_assigned_agents]
+        ordered_nodes.remove(0)
+
         for current_node in ordered_nodes:
             #print(f"PROCESSING NODE {current_node}")
             incoming_edges = [list(e) for e in taskgraph.task_graph.in_edges(current_node)]
@@ -689,11 +752,9 @@ class RealTimeSolver:
                         temp_agent_assignments[current_node] += agent_list
                         agent_assignments[current_node] += agent_list
 
-            else:
-                #print("at start node")
-                task_start_times[int(current_node)] = 0
-                agent_assignments[int(current_node)] = [i for i in range(taskgraph.num_robots)]
-                temp_agent_assignments[int(current_node)] = [i for i in range(taskgraph.num_robots)]
+            else: # is a source node
+                print("ERROR! WE SHOULDN'T BE ITERATING THROUGH ANY NODES THAT HAVE NO INCOMING EDGES!")
+                raise(Exception)
 
             task_finish_times[int(current_node)] = task_start_times[int(current_node)] + taskgraph.task_times[
                 int(current_node)]
@@ -824,3 +885,11 @@ class RealTimeSolver:
 
         plt.savefig(graph_img_file)
         plt.clf()
+
+    def print_trial_history(self):
+        for i in range(self.current_step):
+            agent_coalitions = [self.task_assignment_history[i][j] for j in self.task_done_history[i]]
+            print(f"STEP {i}: task {self.task_done_history[i]} completed by agents {agent_coalitions}")
+            for task in self.task_done_history[i]:
+                print(f"task {task} with duration {self.original_task_graph.task_times[task]} completed at time {self.step_times[i]}")
+
