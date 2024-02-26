@@ -121,9 +121,15 @@ class RewardModel:
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
                                                         var_reward_stddev[node_i])
             else: # TODO should we return the means or the samples?
-                node_cost_val[node_i] = var_reward_mean[node_i]
+                if node_coalition > 0:
+                    node_cost_val[node_i] = var_reward_mean[node_i]
+                else:
+                    node_cost_val[node_i] = 0.0
+                    var_reward_mean[node_i] = 0.0
         if eval:
             return var_reward
+        # if np.any(var_reward_mean < -100):
+        #     import pdb; pdb.set_trace()
         # return task-wise cost (used in optimization)
         return -node_cost_val
 
@@ -281,6 +287,8 @@ class RewardModel:
         #print("node coalition (flow): ", node_coalition)
         #print("task_influence_value: ", task_influence_value)
         #import pdb; pdb.set_trace()
+        # if mean < 0:
+        #     import pdb; pdb.set_trace()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
