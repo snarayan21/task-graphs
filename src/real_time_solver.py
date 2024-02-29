@@ -61,6 +61,8 @@ class RealTimeSolver:
 
         self.nodepos_dict = self.draw_original_taskgraph(self.current_solution, self.trial_dir)
 
+        self.oracle_reward_model = None
+
         self.all_taskgraphs = [self.original_task_graph]
         self.all_solutions = [copy.deepcopy(self.current_solution)]
         self.all_node_mappings = [list(range(self.original_num_tasks))]
@@ -104,38 +106,53 @@ class RealTimeSolver:
         self.task_completed[0] = True
         self.task_rewards[0] = 0
 
-        # mark tasks with incoming edges to the completed task complete
-        # if they are completed before the deadline (even with no flow), they still yield reward
-        for task in completed_tasks:
-            if task != 0:
+        new_completed_task = True
+        all_completed_tasks = copy.deepcopy(completed_tasks)
+        while new_completed_task:
+            new_completed_task = False
+            # mark tasks with incoming edges to the completed task complete
+            completed_tasks_this_it = []
+            for task in all_completed_tasks:
+                if task != 0:
+                    in_edges = [e for e in self.original_task_graph.edges if e[1] == task]
+                    for edge in in_edges:
+                        if not self.task_completed[edge[0]]:
+                            self.task_completed[edge[0]] = True
+                            new_completed_task = True
+                            completed_tasks_this_it.append(edge[0])
+                            self.task_done_history[self.current_step].append(edge[0])
+                            if edge[0] in inprogress_tasks:
+                                node_to_remove_ind = inprogress_tasks.index(edge[0])
+                                inprogress_tasks.pop(node_to_remove_ind)
+                                inprogress_task_coalitions.pop(node_to_remove_ind)
+                                inprogress_task_times.pop(node_to_remove_ind)
+                            # if self.current_finish_times[edge[0]] < self.original_task_graph.makespan_constraint:
+                            #     self.task_rewards[edge[0]] = self.current_actual_and_expected_rewards[edge[0]]
+                            # else:
+                            #    self.task_rewards[edge[0]] = 0.0
+                            # if task was not completed, it yields zero reward
+                            self.task_rewards[edge[0]] = 0.0
+                            self.current_start_times[edge[0]] = 0.0
+                            self.current_finish_times[edge[0]] = 0.0
+
+                            print(f"PRECEDING TASK {edge[0]} COMPLETED WITH REWARD {self.task_rewards[edge[0]]}, MARKING TASK {edge[0]} AS COMPLETE.")
+            all_completed_tasks = all_completed_tasks + completed_tasks_this_it
+
+        new_completed_task = True
+        all_completed_inprogress = copy.deepcopy(inprogress_tasks)
+        while new_completed_task:
+            new_completed_task = False
+            newly_added = []
+            for task in inprogress_tasks:
                 in_edges = [e for e in self.original_task_graph.edges if e[1] == task]
                 for edge in in_edges:
                     if not self.task_completed[edge[0]]:
                         self.task_completed[edge[0]] = True
+                        new_completed_task = True
                         self.task_done_history[self.current_step].append(edge[0])
-                        if edge[0] in inprogress_tasks:
-                            node_to_remove_ind = inprogress_tasks.index(edge[0])
-                            inprogress_tasks.pop(node_to_remove_ind)
-                            inprogress_task_coalitions.pop(node_to_remove_ind)
-                            inprogress_task_times.pop(node_to_remove_ind)
-                        # if self.current_finish_times[edge[0]] < self.original_task_graph.makespan_constraint:
-                        #     self.task_rewards[edge[0]] = self.current_actual_and_expected_rewards[edge[0]]
-                        # else:
-                        #    self.task_rewards[edge[0]] = 0.0
-                        # if task was not completed, it yields zero reward
                         self.task_rewards[edge[0]] = 0.0
-                        self.current_start_times[edge[0]] = 0.0
-                        self.current_finish_times[edge[0]] = 0.0
-
-                        print(f"PRECEDING TASK {edge[0]} COMPLETED WITH REWARD {self.task_rewards[edge[0]]}, MARKING TASK {edge[0]} AS COMPLETE.")
-
-        for task in inprogress_tasks:
-            in_edges = [e for e in self.original_task_graph.edges if e[1] == task]
-            for edge in in_edges:
-                if not self.task_completed[edge[0]]:
-                    self.task_completed[edge[0]] = True
-                    self.task_done_history[self.current_step].append(edge[0])
-                    self.task_rewards[edge[0]] = 0.0
+                        newly_added.append(edge[0])
+            all_completed_inprogress = all_completed_inprogress + newly_added
 
 
         if len(self.task_completed) - sum(self.task_completed) < 2:
@@ -310,7 +327,7 @@ class RealTimeSolver:
         return False  # NOT YET FINISHED
 
 
-    def sim_step(self):
+    def sim_step(self, perturbation=None, perturbation_params=None):
         # simulates a step forward in time, calls step function with updated graph
         # will be used to implement disturbances into the simulator to test disturbance
         # response/ robustness in stripped down simulator
@@ -342,14 +359,16 @@ class RealTimeSolver:
                 inprogress_task_times.append(time - max(self.current_start_times[task],
                                                         self.step_times[self.current_step-1]))
                 inprogress_coalitions.append(self.current_agent_assignment[task])
-        # for now, get exact expected reward
-        all_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(
-            self.original_task_graph.pruned_rounded_baseline_solution)
-        reward = self.current_actual_and_expected_rewards[task_completed]
-        #reward = all_rewards[task_completed]
-        #print(f"SAVING REWARD: {reward}")
-        #print(f"WOULDA BEEN: {self.current_actual_and_expected_rewards[task_completed]}")
-        #print(f"WOULDA BEEN: {all_rewards[task_completed]}")
+        if perturbation is None:
+            # if no perturbation, get exact expected reward
+            reward = self.current_actual_and_expected_rewards[task_completed]
+            expected_reward = reward
+        elif perturbation == 'gaussian':
+            mean = self.current_actual_and_expected_rewards[task_completed]
+            std = perturbation_params*self.current_actual_and_expected_rewards[task_completed]
+            reward = max(0, np.random.normal(loc=mean, scale=std)) # ensure positive reward
+            expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
+
         free_agents = self.current_agent_assignment[task_completed]
         mission_complete = self.step([task_completed], inprogress_tasks, inprogress_task_times, inprogress_coalitions,
                                      [reward], free_agents, time)
@@ -360,12 +379,20 @@ class RealTimeSolver:
         if np.all(remaining_task_times > (self.original_task_graph.makespan_constraint-time)):
             print(f"RAN OUT OF TIME: REAL TIME REALLOCATION TERMINATED. Task times remaining: {remaining_task_times} for tasks {remaining_tasks}.")
             print(f"remaining time: {self.original_task_graph.makespan_constraint-time}")
-            return True
+            return True, reward, expected_reward
 
-        return mission_complete # return true if DONE
+        return mission_complete, reward, expected_reward# return true if DONE
 
         # need list of tasks completed, list of rewards of those tasks, list of free agents
         # that have just finished completed tasks
+    def sim_step_perturbed_model(self, perturbation=None, perturbation_params=None, perturb_model_params=None):
+        if self.oracle_reward_model is None:
+            self.oracle_reward_model = self.create_oracle_reward_model()
+
+        # call sim_step with some new input -- likely a binary -- that performs a reward sample with the oracle
+        # model instead of the solver model
+        pass
+
 
     def create_new_taskgraph(self, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions):
         # creates a new task graph from old task graph parameters
@@ -591,8 +618,6 @@ class RealTimeSolver:
             # sum up inflow into the tasks on the old graph that are currently in progress on the new graph
             # update edge weights to corresponding source --> inprogress task edges in current graph
             source_ct = 1
-            # TODO for inprogress tasks, sometimes prior solutions DO NOT INCLUDE THIS TASK. This means that adopting that prior
-            # solution will abandon this inprogress task. Is this an issue?
             for inprogress_task in new_task_graph.source_node_info_dict['in_progress']:
                 og_inprogress_task = new_to_old_node_mapping[inprogress_task]
                 last_graph_inprogress_task = last_node_mapping.index(og_inprogress_task)
@@ -653,24 +678,27 @@ class RealTimeSolver:
             try:
                 print(proposed_solution)
                 proposed_assignment, _, proposed_fin_times = self.get_assignment(new_task_graph, proposed_solution, new_to_old_node_mapping, inprogress_coalitions_source_it=graph_ct)
+                print(f"PROPOSED FIN TIMES: {np.array(proposed_fin_times) + self.current_time}")
+                proposed_solution_reward_nodewise = new_task_graph.reward_model._nodewise_optim_cost_function(proposed_solution)
+                for task in range(new_task_graph.num_tasks):
+                    if proposed_fin_times[task] + self.current_time > self.original_task_graph.makespan_constraint:
+                        print(f"Task {task} completed after makespan deadline: removing {-proposed_solution_reward_nodewise[task]} reward")
+                        proposed_solution_reward_nodewise[task] = 0
+
+                # if an inprogress task's assigned coalition size is changed, it yields zero reward
+                for (inprogress_task, inprogress_id) in zip(new_task_graph.source_node_info_dict['in_progress'], range(len(new_task_graph.source_node_info_dict['in_progress']))):
+                    original_task_coalition = new_task_graph.source_node_info_dict['node_capacities'][inprogress_id+1]
+                    new_task_coalition = len(proposed_assignment[inprogress_task])/self.original_num_robots
+                    if original_task_coalition != new_task_coalition:
+                        print(f"Coalition assigned to inprogress task {inprogress_task} changed -- task cancelled and {proposed_solution_reward_nodewise[inprogress_task]} reward removed")
+                        proposed_solution_reward_nodewise[inprogress_task] = 0.0
             except Exception as e:
                 print(type(e))
                 print(e)
+                print(f"INFEASIBLE MAPPING FROM SOLUTION {graph_ct} to new graph {self.current_step}. Logging negative reward")
+                proposed_solution_reward_nodewise = np.ones(new_task_graph.num_tasks)*10000000
                 import pdb; pdb.set_trace()
-            print(f"PROPOSED FIN TIMES: {np.array(proposed_fin_times) + self.current_time}")
-            proposed_solution_reward_nodewise = new_task_graph.reward_model._nodewise_optim_cost_function(proposed_solution)
-            for task in range(new_task_graph.num_tasks):
-                if proposed_fin_times[task] + self.current_time > self.original_task_graph.makespan_constraint:
-                    print(f"Task {task} completed after makespan deadline: removing {-proposed_solution_reward_nodewise[task]} reward")
-                    proposed_solution_reward_nodewise[task] = 0
 
-            # if an inprogress task's assigned coalition size is changed, it yields zero reward
-            for (inprogress_task, inprogress_id) in zip(new_task_graph.source_node_info_dict['in_progress'], range(len(new_task_graph.source_node_info_dict['in_progress']))):
-                original_task_coalition = new_task_graph.source_node_info_dict['node_capacities'][inprogress_id+1]
-                new_task_coalition = len(proposed_assignment[inprogress_task])/self.original_num_robots
-                if original_task_coalition != new_task_coalition:
-                    print(f"Coalition assigned to inprogress task {inprogress_task} changed -- task cancelled and {proposed_solution_reward_nodewise[inprogress_task]} reward removed")
-                    proposed_solution_reward_nodewise[inprogress_task] = 0.0
 
             proposed_solution_reward = -np.sum(proposed_solution_reward_nodewise)
             print(f"Updated flow solution from graph {graph_ct}: {proposed_solution}")
@@ -690,6 +718,15 @@ class RealTimeSolver:
             return old_solution_new_graph_list[best_soln_id], best_soln_id
         print(f"New solution was found to be best. No replacement necessary.")
         return new_flow_solution, self.current_step-1
+
+    def create_oracle_reward_model(self, sigma):
+        # TODO: pull all taskgraph params in from the init
+        # copy the dictionary
+        # perturb all params by drawing from N(param, sigma)
+        # create task graph with those params
+        # return it
+
+        return None
 
     def get_assignment(self, taskgraph, flow, new_to_old_node_mapping, inprogress_coalitions_source_it=None):
         if inprogress_coalitions_source_it is None:
