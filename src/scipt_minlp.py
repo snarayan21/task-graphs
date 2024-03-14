@@ -95,6 +95,7 @@ class MRTA_XD():
         #print(self.in_nbrs)
         task_rewards[0] = 1.0 #SEED TASK HAS ONE REWARD (identity for prod aggregator)
         for t in self.node_order[1:]:
+            t = int(t)
             if np.array([task_rewards[self.in_nbrs[t][n]] is None for n in range(len(self.in_nbrs[t]))]).any():
                 breakpoint()
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
