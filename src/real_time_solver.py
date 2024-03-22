@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 class RealTimeSolver:
 
-    def __init__(self, taskgraph_arg_dict, trial_dir='real_time_debug'):
+    def __init__(self, taskgraph_arg_dict, trial_dir='real_time_debug', draw_graph=True):
         # initialize task graph with arguments
         # keep track of free and busy agents, completed and incomplete tasks, reward
         # model, etc
@@ -59,7 +59,8 @@ class RealTimeSolver:
         print(f"original task order: {self.current_ordered_finish_times_inds}")
         self.ghost_node_param_dict = {}
 
-        self.nodepos_dict = self.draw_original_taskgraph(self.current_solution, self.trial_dir)
+        if draw_graph:
+            self.nodepos_dict = self.draw_original_taskgraph(self.current_solution, self.trial_dir)
 
         self.oracle_reward_model = None
 
@@ -69,9 +70,10 @@ class RealTimeSolver:
         self.step_times = [0.0]
         self.task_done_history = [[0]]
         self.task_assignment_history = [copy.deepcopy(self.current_agent_assignment)]
+        self.catastrophic_perturbations = []
 
     def step(self, completed_tasks, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions, rewards,
-             free_agents, time):
+             free_agents, time, draw_graph):
         # inputs:
         # completed_tasks -- list of task IDs of completed tasks
         # inprogress_tasks -- list of task IDs of tasks currently in progress
@@ -229,7 +231,8 @@ class RealTimeSolver:
                     diff = new_graph_node_inflow - old_graph_node_inflow
                     new_flow_solution_old_edges[old_graph_in_edge_inds[0]] += diff
                     if new_flow_solution_old_edges[old_graph_in_edge_inds[0]] > 1:
-                        import pdb; pdb.set_trace()
+                        #import pdb; pdb.set_trace()
+                        raise Exception
                     updated_inds.append(old_graph_in_edge_inds[0])
 
         for ind in range(len(self.current_solution)):
@@ -290,7 +293,8 @@ class RealTimeSolver:
                 old_flow_new_graph[edge_id] = self.current_solution[old_edge_ind]
 
 
-        self.draw_new_taskgraph(new_task_graph, new_to_old_node_mapping, new_flow_solution, graph_img_dir=self.trial_dir)
+        if draw_graph:
+            self.draw_new_taskgraph(new_task_graph, new_to_old_node_mapping, new_flow_solution, graph_img_dir=self.trial_dir)
         self.current_solution = new_flow_solution_old_edges
 
         # redundant?? unneeded --> new_agent_assignment, new_start_times, new_finish_times = self.get_assignment(new_task_graph, new_flow_solution)
@@ -306,7 +310,8 @@ class RealTimeSolver:
 
         for i in range(self.original_num_tasks):
             if len(self.current_agent_assignment[i]) == 0 and self.current_finish_times[i] > 0:
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
+                raise Exception
         self.current_ordered_finish_times = np.sort(self.current_finish_times)
         fin_time_inds = np.argsort(self.current_finish_times)
         self.current_ordered_finish_times_inds = fin_time_inds[self.current_ordered_finish_times > self.current_time]
@@ -327,7 +332,7 @@ class RealTimeSolver:
         return False  # NOT YET FINISHED
 
 
-    def sim_step(self, perturbation=None, perturbation_params=None):
+    def sim_step(self, perturbation=None, perturbation_params=None, perturb_model_params=None, draw_graph=True):
         # simulates a step forward in time, calls step function with updated graph
         # will be used to implement disturbances into the simulator to test disturbance
         # response/ robustness in stripped down simulator
@@ -359,19 +364,45 @@ class RealTimeSolver:
                 inprogress_task_times.append(time - max(self.current_start_times[task],
                                                         self.step_times[self.current_step-1]))
                 inprogress_coalitions.append(self.current_agent_assignment[task])
-        if perturbation is None:
-            # if no perturbation, get exact expected reward
-            reward = self.current_actual_and_expected_rewards[task_completed]
-            expected_reward = reward
-        elif perturbation == 'gaussian':
-            mean = self.current_actual_and_expected_rewards[task_completed]
-            std = perturbation_params*self.current_actual_and_expected_rewards[task_completed]
-            reward = max(0, np.random.normal(loc=mean, scale=std)) # ensure positive reward
-            expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
+        if perturb_model_params is None:
+            if perturbation is None:
+                # if no perturbation, get exact expected reward
+                reward = self.current_actual_and_expected_rewards[task_completed]
+                expected_reward = reward
+            elif perturbation == 'gaussian':
+                mean = self.current_actual_and_expected_rewards[task_completed]
+                std = perturbation_params*self.current_actual_and_expected_rewards[task_completed]
+                reward = max(0, np.random.normal(loc=mean, scale=std)) # ensure positive reward
+                expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
+            elif perturbation == 'catastrophic':
+                if np.random.rand() < perturbation_params:
+                    reward = 0.0
+                    self.catastrophic_perturbations.append(task_completed)
+                else:
+                    reward = self.current_actual_and_expected_rewards[task_completed]
+                expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
+        else:
+            if perturbation is None:
+                # if no perturbation, get exact expected reward FROM ORACLE MODEL
+                # TODO how to do this??
+                reward = self.current_actual_and_expected_rewards[task_completed]
+                expected_reward = reward
+            elif perturbation == 'gaussian':
+                # TODO
+                mean = self.current_actual_and_expected_rewards[task_completed]
+                std = perturbation_params*self.current_actual_and_expected_rewards[task_completed]
+                reward = max(0, np.random.normal(loc=mean, scale=std)) # ensure positive reward
+                expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
+            elif perturbation == 'catastrophic':
+                if np.random.rand() < perturbation_params:
+                    reward = 0.0
+                else:
+                    reward = self.current_actual_and_expected_rewards[task_completed]
+                expected_reward = copy.deepcopy(self.current_actual_and_expected_rewards[task_completed])
 
         free_agents = self.current_agent_assignment[task_completed]
         mission_complete = self.step([task_completed], inprogress_tasks, inprogress_task_times, inprogress_coalitions,
-                                     [reward], free_agents, time)
+                                     [reward], free_agents, time, draw_graph=draw_graph)
         print(f"original makespan constraint: {self.original_task_graph.makespan_constraint}")
         remaining_tasks = [i for i in range(self.original_num_tasks) if not self.task_completed[i]]
         remaining_task_times = [self.original_task_graph.task_times[i] for i in remaining_tasks]
@@ -385,13 +416,13 @@ class RealTimeSolver:
 
         # need list of tasks completed, list of rewards of those tasks, list of free agents
         # that have just finished completed tasks
-    def sim_step_perturbed_model(self, perturbation=None, perturbation_params=None, perturb_model_params=None):
+    def sim_step_perturbed_model(self, perturbation=None, perturbation_params=None, perturb_model_params=None, draw_graph=True):
         if self.oracle_reward_model is None:
-            self.oracle_reward_model = self.create_oracle_reward_model()
+            self.oracle_reward_model = self.create_oracle_reward_model(sigma=perturb_model_params)
 
         # call sim_step with some new input -- likely a binary -- that performs a reward sample with the oracle
         # model instead of the solver model
-        pass
+        return self.sim_step(perturbation=perturbation, perturbation_params=perturbation_params, perturb_model_params=perturb_model_params, draw_graph=draw_graph)
 
 
     def create_new_taskgraph(self, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions):
@@ -405,6 +436,8 @@ class RealTimeSolver:
 
         # create copy of original task graph args
         new_args = copy.deepcopy(self.original_args)
+        if 'run_minlp' in new_args.keys():
+            new_args['run_minlp'] = False
         # fix any ordering discrepancies
         new_args['edges'] = copy.deepcopy(
             self.original_task_graph.reward_model.edges)  # list of lists rather than list of tuples
@@ -566,7 +599,8 @@ class RealTimeSolver:
             old_task_time = self.all_taskgraphs[self.current_step-1].task_times[self.all_node_mappings[self.current_step-1].index(task)]
             new_args['task_times'][new_node_name] = old_task_time - inprogress_task_times[inprogress_tasks.index(task)]
             if new_args['task_times'][new_node_name] < 0:
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
+                raise Exception
         new_args['num_tasks'] = len(new_to_old_node_mapping)
 
         node_capacities = [0.]
@@ -589,7 +623,8 @@ class RealTimeSolver:
         # create new taskgraph with args
         new_task_graph = TaskGraph(**new_args)
         if abs(new_task_graph.makespan_constraint - self.original_task_graph.makespan_constraint + self.current_time) > 0.00001:
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
+            raise Exception
         return new_task_graph, new_to_old_node_mapping
 
     def check_and_update_solution(self, new_flow_solution):
@@ -669,7 +704,8 @@ class RealTimeSolver:
             for (edge, edge_id) in zip(non_updated_edges, non_updated_edges_ids):
                 og_edge_name = (new_to_old_node_mapping[edge[0]], new_to_old_node_mapping[edge[1]])
                 if -1 in og_edge_name:
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
+                    raise Exception
                 edge_name_in_last_graph = (last_node_mapping.index(og_edge_name[0]), last_node_mapping.index(og_edge_name[1]))
                 if edge_name_in_last_graph in last_graph.edges:
                     last_graph_edge_id = last_graph.edges.index(edge_name_in_last_graph)
@@ -697,7 +733,8 @@ class RealTimeSolver:
                 print(e)
                 print(f"INFEASIBLE MAPPING FROM SOLUTION {graph_ct} to new graph {self.current_step}. Logging negative reward")
                 proposed_solution_reward_nodewise = np.ones(new_task_graph.num_tasks)*10000000
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
+                # TODO still need to work on catching bugs via this except
 
 
             proposed_solution_reward = -np.sum(proposed_solution_reward_nodewise)
@@ -719,14 +756,33 @@ class RealTimeSolver:
         print(f"New solution was found to be best. No replacement necessary.")
         return new_flow_solution, self.current_step-1
 
-    def create_oracle_reward_model(self, sigma):
-        # TODO: pull all taskgraph params in from the init
-        # copy the dictionary
-        # perturb all params by drawing from N(param, sigma)
-        # create task graph with those params
-        # return it
+    def create_oracle_reward_model(self, sigma=0.0):
 
-        return None
+        # copy the dictionary
+        new_args = copy.deepcopy(self.original_args)
+        if 'run_minlp' in new_args.keys():
+            new_args['run_minlp'] = False
+        # fix any ordering discrepancies
+        new_args['edges'] = copy.deepcopy(
+            self.original_task_graph.reward_model.edges)  # list of lists rather than list of tuples
+        new_args['dependency_params'] = copy.deepcopy(self.original_task_graph.dependency_params)
+        new_args['dependency_types'] = copy.deepcopy(self.original_task_graph.dependency_types)
+
+        # perturb all params by drawing from N(param, sigma*param)
+        for (param, param_ind) in zip(new_args['coalition_params'], range(len(new_args['coalition_params']))):
+            new_param = []
+            for entry in param:
+                new_param.append(np.random.normal(entry, abs(entry*sigma)))
+            new_args['coalition_params'][param_ind] = new_param
+        for (param, param_ind) in zip(new_args['dependency_params'], range(len(new_args['dependency_params']))):
+            new_param = []
+            for entry in param:
+                new_param.append(np.random.normal(entry, abs(entry*sigma)))
+            new_args['dependency_params'][param_ind] = new_param
+
+        oracle_task_graph = TaskGraph(**new_args)
+
+        return oracle_task_graph.reward_model
 
     def get_assignment(self, taskgraph, flow, new_to_old_node_mapping, inprogress_coalitions_source_it=None):
         if inprogress_coalitions_source_it is None:
