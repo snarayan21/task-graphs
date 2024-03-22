@@ -15,6 +15,10 @@ class ExperimentGenerator():
         exp_args = all_args['exp']
 
         self.num_trials = exp_args['num_trials']
+        if 'realtime_mode' in all_args.keys():
+            self.realtime_mode = all_args['realtime_mode']
+        else:
+            self.realtime_mode = False
         if 'run_minlp' in exp_args.keys():
             self.run_minlp = exp_args['run_minlp']
         else:
@@ -308,10 +312,8 @@ class ExperimentGenerator():
                 p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
                 coalition_params.append([p0,float(k),w,p3])
             if taskgraph_args_exp['coalition_types'][i] == 'dim_return':
-                w = np.random.random()*10+0.5
-                p0 = float(M/(1-np.exp(w)))
-                p1 = w
-                coalition_params.append([p0,p1,p0])
+                w = np.random.random()*20+3
+                coalition_params.append([float(M),float(w),float(M)])
             if taskgraph_args_exp['coalition_types'][i] == 'polynomial':
                 w = 0.5+np.random.random()/2 # vertex value in [0.5,1]
                 p1 =  2*M/w
