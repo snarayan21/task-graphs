@@ -60,7 +60,11 @@ class RewardModel:
         #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
-    def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False, debug=False):
+    def flow_cost_perturbed(self, f, perturbation_type, eval_param):
+        result = self._nodewise_optim_cost_function(f, eval_mode=True, perturbation_type=perturbation_type, eval_param=eval_param)
+        return np.sum(result), result
+
+    def _nodewise_optim_cost_function(self, f, eval_mode=False, perturbation_type=None, use_cvar=False, debug=False, eval_param=None):
         """
         Computes the cost function value for all the nodes individually based on the flow value
         :param f: shape=(num_edges X 1) , flow value over all edges
@@ -96,20 +100,28 @@ class RewardModel:
             #breakpoint()
             #calculate incoming neighbors to node i
             incoming_node_inds = [edge[0] for edge in list(self.task_graph.in_edges(node_i))]
-            incoming_node_rewards = var_reward_mean[incoming_node_inds]
-            incoming_node_stds = var_reward_stddev[incoming_node_inds]
 
-            if eval:
-                raise(NotImplementedError)
-                #TODO: update var_reward and var_reward_stddev argument in below function call to represent the incoming node rewards to node_i
+
+            if eval_mode:
+                incoming_node_rewards = var_reward[incoming_node_inds]
+                incoming_node_stds = var_reward_stddev[incoming_node_inds]
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
-                                                                                                     var_reward,
-                                                                                                     var_reward_stddev)
-                var_reward[node_i] = np.random.normal(var_reward_mean[node_i], var_reward_stddev[node_i])
-
+                                                                                                     incoming_node_rewards,
+                                                                                         incoming_node_stds)
+                if node_coalition > 0:
+                    if perturbation_type == 'gaussian':
+                        var_reward[node_i] = max(0, np.random.normal(var_reward_mean[node_i], abs(eval_param*var_reward_mean[node_i])))
+                    elif perturbation_type == 'catastrophic':
+                        if node_i in eval_param: # list of nodes perturbed from real time solver
+                            var_reward[node_i] = 0.0
+                        else:
+                            var_reward[node_i] = var_reward_mean[node_i]
+                else:
+                    var_reward[node_i] = 0.0
             else:
-
+                incoming_node_rewards = var_reward_mean[incoming_node_inds]
+                incoming_node_stds = var_reward_stddev[incoming_node_inds]
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      incoming_node_rewards,
@@ -120,14 +132,14 @@ class RewardModel:
                 # if use_cvar is True, use the cvar metric to compute the cost
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
                                                         var_reward_stddev[node_i])
-            else: # TODO should we return the means or the samples?
+            else:
                 if node_coalition > 0:
                     node_cost_val[node_i] = var_reward_mean[node_i]
                 else:
                     node_cost_val[node_i] = 0.0
                     var_reward_mean[node_i] = 0.0
-        if eval:
-            return var_reward
+        if eval_mode:
+            return -var_reward
         # if np.any(var_reward_mean < -100):
         #     import pdb; pdb.set_trace()
         # return task-wise cost (used in optimization)
