@@ -36,6 +36,8 @@ class TaskGraph:
                  warm_start=False,
                  ghost_node_param_dict=None,
                  source_node_info_dict=None,
+                 inter_task_travel_times=None,
+                 minlp_perturbed_objective=False,
                  npl=None):
 
         if ghost_node_param_dict is None:
@@ -50,6 +52,7 @@ class TaskGraph:
         else:
             self.minlp_time_constraint = minlp_time_constraint
         self.minlp_reward_constraint = minlp_reward_constraint
+        self.minlp_perturbed_objective = minlp_perturbed_objective
         self.task_graph = nx.DiGraph()
         self.task_graph.add_nodes_from(range(num_tasks))
         self.task_graph.add_edges_from(edges)
@@ -78,6 +81,15 @@ class TaskGraph:
             task_times = np.random.rand(num_tasks)# randomly sample task times from the range 0 to 1
             task_times[0] = 0.0
 
+        if inter_task_travel_times is None:
+            self.inter_task_travel_times = np.zeros(self.num_edges)
+        elif inter_task_travel_times == 'random':
+            self.inter_task_travel_times = np.random.rand(self.num_edges) # range 0 to 1
+            for edge_id in range(len(self.edges)):
+                if self.edges[edge_id][0] == 0: # no need to check if any additional source nodes -- random initialization not called on subgraphs in real time mode
+                    self.inter_task_travel_times[edge_id] = 0.0
+        else:
+            self.inter_task_travel_times = inter_task_travel_times
         self.task_times = np.array(task_times, dtype='float')
         print("self.task_times: ", self.task_times)
 
@@ -151,7 +163,8 @@ class TaskGraph:
             reward_model=self.reward_model,
             task_graph=self.task_graph,
             task_times=self.task_times,
-            makespan_constraint=self.makespan_constraint
+            makespan_constraint=self.makespan_constraint,
+            perturbed_objective=self.minlp_perturbed_objective
         )
         return obj
 
@@ -676,6 +689,7 @@ class TaskGraph:
         self.reward = self.reward_model._nodewise_optim_cost_function(self.flow, eval=True)
 
     def time_task_execution(self, flow):
+        # TODO need to update in real_time_reallocation and maybe elsewhere as well
         frontier_nodes = []
         task_start_times = np.zeros((self.num_tasks,))
         task_finish_times = np.zeros((self.num_tasks,))
@@ -692,7 +706,7 @@ class TaskGraph:
                     task_start_times[int(current_node)] = 0.0
                     incomplete_nodes.append(current_node)
                 else:
-                    task_start_times[int(current_node)] = max([task_finish_times[int(incoming_edges[i][0])] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
+                    task_start_times[int(current_node)] = max([task_finish_times[int(incoming_edges[i][0])] + self.inter_task_travel_times[incoming_edge_inds[i]] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
             else:
                 task_start_times[int(current_node)] = 0
             task_finish_times[int(current_node)] = task_start_times[int(current_node)] + self.task_times[int(current_node)]
