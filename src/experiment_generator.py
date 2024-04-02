@@ -158,7 +158,25 @@ class ExperimentGenerator():
             #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
-            print("BASELINE SOLUTION FINISHED")
+            print("FLOW-BASED SOLUTION FINISHED")
+            check_itt = False
+            if check_itt:
+                print("CHECKING ITT ------------------------------")
+                tst, tft = task_graph.time_task_execution(task_graph.pruned_rounded_baseline_solution)
+                for i in range(len(task_graph.edges)):
+                    itt = task_graph.inter_task_travel_times[i]
+                    itt_actual = tst[task_graph.edges[i][1]] - tft[task_graph.edges[i][0]]
+                    if itt <= itt_actual + 0.000001:
+                        print(f"EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
+                    elif tft[task_graph.edges[i][1]] == 0:
+                        print(f"Task {task_graph.edges[i][1]} not completed")
+                    elif task_graph.pruned_rounded_baseline_solution[i] < 0.0000001:
+                        print(f"Edge {task_graph.edges[i]} not traversed")
+                    else:
+                        print(f"ABERRATION ON EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
+                        import pdb; pdb.set_trace()
+                print("--------------------------DONE CHECKING ITT")
+
 
             baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
 
