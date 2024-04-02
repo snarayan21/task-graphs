@@ -602,7 +602,7 @@ class RealTimeSolver:
                 #import pdb; pdb.set_trace()
                 raise Exception
         new_args['num_tasks'] = len(new_to_old_node_mapping)
-
+        # TODO need to update inter-task travel time
         node_capacities = [0.]
         for coalition in inprogress_task_coalitions:
             node_capacities.append(len(coalition) / self.original_num_robots)
