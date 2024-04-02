@@ -7,7 +7,6 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-import pathlib
 
 class ExperimentGenerator():
 
@@ -16,7 +15,10 @@ class ExperimentGenerator():
         exp_args = all_args['exp']
 
         self.num_trials = exp_args['num_trials']
-        self.run_ddp = exp_args['run_ddp']
+        if 'realtime_mode' in all_args.keys():
+            self.realtime_mode = all_args['realtime_mode']
+        else:
+            self.realtime_mode = False
         if 'run_minlp' in exp_args.keys():
             self.run_minlp = exp_args['run_minlp']
         else:
@@ -90,6 +92,10 @@ class ExperimentGenerator():
             self.num_nodes = exp_args['num_nodes']
         else:
             self.num_nodes = None
+        if 'inter_task_travel_times' in exp_args.keys():
+            self.inter_task_travel_times = exp_args['inter_task_travel_times']
+        else:
+            self.inter_task_travel_times = None
 
 
     def run_trials(self):
@@ -148,24 +154,31 @@ class ExperimentGenerator():
             greedy_fin_time = time.time()
             greedy_elapsed_time = greedy_fin_time-start
             print("GREEDY SOLUTION FINISHED")
-            run_ddp = self.run_ddp
-            if run_ddp:
-                #solve with ddp
-                task_graph.initialize_solver_ddp(**trial_args['ddp'])
-                task_graph.solve_ddp()
-                ddp_fin_time = time.time()
-                ddp_elapsed_time = ddp_fin_time-greedy_fin_time
-                print("DDP SOLUTION FINISHED")
 
             #solve baseline
             task_graph.solve_graph_scipy()
             baseline_fin_time = time.time()
-            print("BASELINE SOLUTION FINISHED")
+            print("FLOW-BASED SOLUTION FINISHED")
+            check_itt = False
+            if check_itt:
+                print("CHECKING ITT ------------------------------")
+                tst, tft = task_graph.time_task_execution(task_graph.pruned_rounded_baseline_solution)
+                for i in range(len(task_graph.edges)):
+                    itt = task_graph.inter_task_travel_times[i]
+                    itt_actual = tst[task_graph.edges[i][1]] - tft[task_graph.edges[i][0]]
+                    if itt <= itt_actual + 0.000001:
+                        print(f"EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
+                    elif tft[task_graph.edges[i][1]] == 0:
+                        print(f"Task {task_graph.edges[i][1]} not completed")
+                    elif task_graph.pruned_rounded_baseline_solution[i] < 0.0000001:
+                        print(f"Edge {task_graph.edges[i]} not traversed")
+                    else:
+                        print(f"ABERRATION ON EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
+                        import pdb; pdb.set_trace()
+                print("--------------------------DONE CHECKING ITT")
 
-            if run_ddp:
-                baseline_elapsed_time = baseline_fin_time-ddp_fin_time
-            else:
-                baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
+
+            baseline_elapsed_time = baseline_fin_time-greedy_fin_time #ddp_fin_time
 
             #solve minlp
             if self.run_minlp:
@@ -175,26 +188,6 @@ class ExperimentGenerator():
             minlp_fin_time = time.time()
             minlp_elapsed_time = minlp_fin_time - baseline_fin_time
             print("MINLP SOLUTION FINISHED")
-
-            if run_ddp:
-                ddp_data = trial_dir / "ddp_data.jpg"
-                fig, axs = plt.subplots(4,1,sharex=True, figsize=(6,12))
-                axs[0].plot(task_graph.ddp_reward_history)
-                axs[0].set_ylabel('Reward')
-
-                axs[1].plot(task_graph.constraint_residual)
-                axs[1].set_ylabel('Constraint Residual Norm')
-
-                axs[2].plot(task_graph.alpha_hist)
-                axs[2].set_ylabel('Alpha value')
-
-                axs[3].plot(task_graph.buffer_hist)
-                axs[3].set_ylabel('Buffer value')
-
-                fig.text(0.5, 0.04, 'Iteration #', ha='center')
-                plt.savefig(ddp_data.absolute())
-
-                plt.clf()   # clear plot for next iteration
 
             #log results
             trial_arg_list.append(trial_args)
@@ -232,12 +225,6 @@ class ExperimentGenerator():
             if np.isinf(np.array(results_dict['pruned_rounded_greedy_reward'],results_dict['pruned_rounded_baseline_reward'])).any():
                 pass
                 #breakpoint()
-            if run_ddp:
-                results_dict['ddp_reward'] = -task_graph.reward_model.flow_cost(task_graph.last_ddp_solution)
-                results_dict['ddp_solution'] = task_graph.last_ddp_solution
-                results_dict['ddp_solution_time'] = ddp_elapsed_time
-                results_dict['ddp_makespan'] = task_graph.time_task_execution(task_graph.last_ddp_solution)[1][-1]
-                results_dict['ddp_execution_times'] = task_graph.time_task_execution(task_graph.last_ddp_solution)
 
 
 
@@ -263,6 +250,7 @@ class ExperimentGenerator():
 
             # overwrite args file with task times
             trial_args['exp']['task_times'] = task_graph.task_times
+            trial_args['exp']['inter_task_travel_times'] = task_graph.inter_task_travel_times
             with open(args_file, "w") as f:
                 toml.dump(trial_args,f)
 
@@ -304,14 +292,15 @@ class ExperimentGenerator():
                 node_pos[node] = (x_pos + (np.random.random()-0.5)*0.25,y_tot-node_ct*y_interval)
                 node_ct += 1
 
+        # initialize new taskgraph args dict
         taskgraph_args = {}
         taskgraph_args_exp = {}
-        taskgraph_args_exp['max_steps'] = 100
         taskgraph_args_exp['num_tasks'] = trial_num_nodes
-        taskgraph_args_exp['edges'] = [np.array(edge) for edge in edge_list]
+        taskgraph_args_exp['edges'] = [[int(edge[0]), int(edge[1])] for edge in edge_list] #[np.array(edge) for edge in edge_list]
         taskgraph_args_exp['num_robots'] = self.num_robots
         taskgraph_args_exp['makespan_constraint'] = self.makespan_constraint
-        taskgraph_args_exp['coalition_influence_aggregator'] = self.coalition_influence_aggregator #'product' # or 'sum'
+
+        # add variables associated with nodes
         if self.coalition_influence_aggregator == 'sum' or not self.randomize_parameters:
             self.nodewise_coalition_influence_agg_list = ['sum' for _ in range(trial_num_nodes)]
         elif self.coalition_influence_aggregator == 'product':
@@ -346,10 +335,8 @@ class ExperimentGenerator():
                 p3 = float( M*(1+np.exp(-k)*np.exp(k*w)) / ((1-np.exp(-k))*np.exp(k*w)))
                 coalition_params.append([p0,float(k),w,p3])
             if taskgraph_args_exp['coalition_types'][i] == 'dim_return':
-                w = np.random.random()*10+0.5
-                p0 = float(M/(1-np.exp(w)))
-                p1 = w
-                coalition_params.append([p0,p1,p0])
+                w = np.random.random()*20+3
+                coalition_params.append([float(M),float(w),float(M)])
             if taskgraph_args_exp['coalition_types'][i] == 'polynomial':
                 w = 0.5+np.random.random()/2 # vertex value in [0.5,1]
                 p1 =  2*M/w
@@ -358,6 +345,10 @@ class ExperimentGenerator():
 
         taskgraph_args_exp['coalition_params'] = coalition_params
 
+        # ALL AGGS ARE SUM IN MINLP OBJECTIVE, SO SET ALL AGGS TO SUM HERE WHEN COMPARING WITH MINLP
+        taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
+
+        # add variables associated with edges
         # sample from dependency types available -- list of strings
         influence_types_choices = ['sigmoid_b', 'dim_return']
         influence_types_indices = np.random.randint(0,2,(num_edges,))
@@ -381,12 +372,30 @@ class ExperimentGenerator():
                 w = np.random.random()*10+0.5
                 dependency_params.append([float(M),w,float(M)])
         taskgraph_args_exp['dependency_params'] = dependency_params
-        # sample from available agg types -- probably all sum for now???
-        taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
+
+
+
+
+        # ensure neighbors of source node do not receive extra reward:
+        # set influence function to poly with all zeros on each edge out of the source
+        # ensure all neighbors of source node have sum as coalition-influence aggregator so they are not zeroed out
+        neighbors_to_source = list(nx_task_graph.neighbors(0))
+        source_out_edges = [list(e) for e in nx_task_graph.out_edges(0)]
+        outgoing_edge_inds = [edge_list.index(e) for e in source_out_edges]
+        for source_out_edge_ind in outgoing_edge_inds:
+            taskgraph_args_exp['dependency_types'][source_out_edge_ind] = 'polynomial'
+            taskgraph_args_exp['dependency_params'][source_out_edge_ind] = [0, 0, 0]
+
+        for node in neighbors_to_source:
+            taskgraph_args_exp['nodewise_coalition_influence_agg_list'][node] = 'sum'
+            # no need to change aggs -- still ends up as zero agg influence output, and nodes should only have one neighbor
+
+
 
         taskgraph_args_exp['minlp_time_constraint'] = True #TODO make this a parameter
         taskgraph_args_exp['run_minlp'] = self.run_minlp
         taskgraph_args_exp['warm_start'] = self.warm_start
+        taskgraph_args_exp['inter_task_travel_times'] = self.inter_task_travel_times
 
 
         taskgraph_args['exp'] = taskgraph_args_exp
@@ -556,6 +565,9 @@ class ExperimentGenerator():
             print("Graph is DAG: ", nx.is_directed_acyclic_graph(nx_task_graph))
             print("Graph is connected: ", nx.has_path(nx_task_graph, 0, node_list[-1]))
 
+            # ensure edges of edge_list and networkx object edges are the same
+            edge_list = [list(e) for e  in nx_task_graph.edges]
+
             if require_precise_nodes:
                 precise_nodes_condition = trial_num_nodes == self.num_nodes
             else:
@@ -595,6 +607,9 @@ def load_taskgraph_args(filename):
     task_graph.add_edges_from(edges)
     if 'makespan_constraint' not in args['exp'].keys():
         args['exp']['makespan_constraint'] = 0.8
+
+    if 'max_steps' in args['exp'].keys():
+        args['exp'].pop('max_steps')
 
     return args, task_graph, None
 

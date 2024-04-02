@@ -9,8 +9,8 @@ import autograd.numpy as anp # TODO use instead of numpy if autograd is failing
 class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
-                 dependency_types,influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list,
-                 reward_model, task_graph,task_times, makespan_constraint, time_limit=1000):
+                 dependency_types,influence_agg_func_types, nodewise_coalition_influence_agg_list,
+                 reward_model, task_graph,task_times, makespan_constraint, time_limit=1000, perturbed_objective=False):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -19,7 +19,6 @@ class MRTA_XD():
         self.dependency_params = dependency_params
         self.dependency_types = dependency_types
         self.influence_agg_func_types = influence_agg_func_types
-        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
         self.reward_model = reward_model # need this for the reward model agg functions
         self.task_graph = task_graph
@@ -32,12 +31,15 @@ class MRTA_XD():
 
         self.in_edge_inds = []
         self.influence_func_handles = []
+        self.perturbed_influence_func_handles = []
         for t in range(self.num_tasks):
             in_edges_t = list(self.task_graph.in_edges(t))
             in_edges_t_inds = [list(self.task_graph.edges).index(edge) for edge in in_edges_t]
             self.in_edge_inds.append(in_edges_t_inds)
             influence_handles_t = [getattr(self, self.reward_model.dependency_types[edge_i]) for edge_i in in_edges_t_inds]
+            perturbed_influence_func_handles_t = [getattr(self.reward_model, self.reward_model.dependency_types[edge_i]) for edge_i in in_edges_t_inds]
             self.influence_func_handles.append(influence_handles_t)
+            self.perturbed_influence_func_handles.append(perturbed_influence_func_handles_t)
 
         #self.jacobian_handle = jacobian(self.constraints)
 
@@ -49,10 +51,15 @@ class MRTA_XD():
         self.z = self.model.addVar("z")
         self.set_constraints()
         print("CONSTRAINTS SET")
-        self.model.addCons(self.z <= self.objective())
-        print("CONSTRAINT OBJECTIVE SET")
-        self.model.setObjective(self.z, sense='maximize')
-        print("OBJECTIVE SET")
+        if not perturbed_objective:
+            self.model.addCons(self.z <= self.objective())
+            print("CONSTRAINT OBJECTIVE SET")
+            self.model.setObjective(self.z, sense='maximize')
+            print("OBJECTIVE SET")
+        else: # IF PERTURBED OBJECTIVE
+            # WE TAKE CARE OF THIS IN
+            pass
+
 
     def add_variables(self):
         x_len = (self.num_tasks+1)*self.num_robots # extra dummy task
@@ -96,6 +103,7 @@ class MRTA_XD():
         #print(self.in_nbrs)
         task_rewards[0] = 1.0 #SEED TASK HAS ONE REWARD (identity for prod aggregator)
         for t in self.node_order[1:]:
+            t = int(t)
             if np.array([task_rewards[self.in_nbrs[t][n]] is None for n in range(len(self.in_nbrs[t]))]).any():
                 breakpoint()
             task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
@@ -108,8 +116,97 @@ class MRTA_XD():
                 task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t]
         #print("overall rewards: ", task_rewards)
         print("TASK REWARDS CALCULATED")
-        return quicksum(task_rewards) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
+        return quicksum(task_rewards[1:]) # - 0.0001*quicksum(self.f_k) # TODO improve upon this super hacky way to incentivize lower times
 
+
+    def perturbed_objective(self, x, perturbation_type, perturbation_params):
+        """Returns the scalar value of the objective given x."""
+        assert perturbation_type == 'catastrophic'
+        # x_ak organized by agent
+        ind_x_ak = self.ind_x_ak[:,1:]
+        x_ak, o_akk, z_ak, s_k, f_k = self.partition_x(x)
+        task_coalitions = []#np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
+        task_coalition_rewards = [] # np.zeros((self.num_tasks,))
+        for t in range(self.num_tasks):
+            task_coalitions.append(np.sum([x_ak[ind_x_ak[a,t]] for a in range(self.num_robots)])/self.num_robots)
+            # the below is just a polynonial or exponential function of the coalition. Can write it explicitly as a separate function in here and then call it
+            task_coalition_rewards.append(self.get_coalition_perturbed(t,task_coalitions[t]))
+        #print("coalitions: ", task_coalitions)
+        #print("coalition func rewards: ",task_coalition_rewards)
+        print("COALITION REWARDS CALCULATED")
+        task_influence_rewards = [None for _ in range(self.num_tasks)]
+        task_influnce_agg = [None for _ in range(self.num_tasks)]
+        task_rewards = [None for _ in range(self.num_tasks)]
+        #print(self.influence_func_handles)
+        #print(self.in_nbrs)
+        task_rewards[0] = 1.0 #SEED TASK HAS ONE REWARD (identity for prod aggregator)
+        for t in self.node_order[1:]:
+            t = int(t)
+            if np.array([task_rewards[self.in_nbrs[t][n]] is None for n in range(len(self.in_nbrs[t]))]).any():
+                breakpoint()
+            task_influence_rewards[t] = [self.perturbed_influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
+            if len(self.in_nbrs[t]) == 0:
+                task_influence_rewards[t] = [1.0]
+            task_influnce_agg[t] = np.sum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
+            if self.nodewise_coalition_influence_agg_list[t] == 'sum':
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t]
+            if self.nodewise_coalition_influence_agg_list[t] == 'product':
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t]
+            if t in perturbation_params:
+                task_rewards[t] = 0.0
+
+        #print("overall rewards: ", task_rewards)
+        print("TASK REWARDS CALCULATED")
+        return np.sum(task_rewards[1:])
+
+    def init_perturbed_objective_opt(self, perturbation_type, perturbation_params):
+        self.perturbation_type = perturbation_type
+        self.perturbation_params = perturbation_params
+        self.model.addCons(self.z <= self.perturbed_objective_opt())
+        print("CONSTRAINT OBJECTIVE SET")
+        self.model.setObjective(self.z, sense='maximize')
+        print("OBJECTIVE SET")
+
+    def perturbed_objective_opt(self):
+        """Returns the scalar value of the objective given x."""
+        perturbation_type = self.perturbation_type
+        perturbation_params = self.perturbation_params
+        assert perturbation_type == 'catastrophic'
+        # x_ak organized by agent
+        ind_x_ak = self.ind_x_ak[:,1:]
+        task_coalitions = []#np.zeros((self.num_tasks,)) # list of coalition size assigned to each task
+        task_coalition_rewards = [] # np.zeros((self.num_tasks,))
+        for t in range(self.num_tasks):
+            task_coalitions.append(np.sum([self.x_ak[ind_x_ak[a,t]] for a in range(self.num_robots)])/self.num_robots)
+            # the below is just a polynonial or exponential function of the coalition. Can write it explicitly as a separate function in here and then call it
+            task_coalition_rewards.append(self.get_coalition(t,task_coalitions[t]))
+        #print("coalitions: ", task_coalitions)
+        #print("coalition func rewards: ",task_coalition_rewards)
+        print("COALITION REWARDS CALCULATED")
+        task_influence_rewards = [None for _ in range(self.num_tasks)]
+        task_influnce_agg = [None for _ in range(self.num_tasks)]
+        task_rewards = [None for _ in range(self.num_tasks)]
+        #print(self.influence_func_handles)
+        #print(self.in_nbrs)
+        task_rewards[0] = 1.0 #SEED TASK HAS ONE REWARD (identity for prod aggregator)
+        for t in self.node_order[1:]:
+            t = int(t)
+            if np.array([task_rewards[self.in_nbrs[t][n]] is None for n in range(len(self.in_nbrs[t]))]).any():
+                breakpoint()
+            task_influence_rewards[t] = [self.influence_func_handles[t][n](task_rewards[self.in_nbrs[t][n]],self.reward_model.dependency_params[self.in_edge_inds[t][n]]) for n in range(len(self.in_nbrs[t]))]
+            if len(self.in_nbrs[t]) == 0:
+                task_influence_rewards[t] = [1.0]
+            task_influnce_agg[t] = quicksum(task_influence_rewards[t]) # TODO expand this to have more options than just sum
+            if self.nodewise_coalition_influence_agg_list[t] == 'sum':
+                task_rewards[t] = task_influnce_agg[t] + task_coalition_rewards[t]
+            if self.nodewise_coalition_influence_agg_list[t] == 'product':
+                task_rewards[t] = task_influnce_agg[t] * task_coalition_rewards[t]
+            if t in perturbation_params:
+                task_rewards[t] = 0.0
+
+        #print("overall rewards: ", task_rewards)
+        print("TASK REWARDS CALCULATED")
+        return quicksum(task_rewards[1:])
 
     def set_constraints(self):
         """adds the constraints to the model"""
@@ -189,7 +286,9 @@ class MRTA_XD():
         coalition_function = getattr(self, self.reward_model.coalition_types[node_i])
         #breakpoint()
         return coalition_function(f, param=self.reward_model.coalition_params[node_i])
-
+    def get_coalition_perturbed(self, node_i, f):
+        coalition_function = getattr(self.reward_model, self.reward_model.coalition_types[node_i])
+        return coalition_function(f, param=self.reward_model.coalition_params[node_i])
     ########################## BELOW FUNCS MODIFIED FROM REWARD_MODEL ##########################
     def sigmoid(self, flow, param):
         return param[0] / (1 + exp(-1 * param[1] * (flow - param[2])))
@@ -206,6 +305,9 @@ class MRTA_XD():
     def polynomial(self, flow, param):
         val = quicksum([float(param[i])*flow**i for i in range(len(param))])
         return val
+
+    def exponential(self, flow, param):
+        return (param[0]**0.5)*exp(0.5*param[1]*flow)
 
     def null(self, flow, param):
         return 0.0

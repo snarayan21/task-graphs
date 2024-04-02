@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import norm
 #from pydrake.autodiffutils import AutoDiffXd
 import networkx as nx
-import autograd
+#import autograd
 import math
 
 
@@ -13,15 +13,34 @@ class RewardModel:
     rewards.
     """
 
-    def __init__(self, num_tasks, num_robots, task_graph, coalition_params, coalition_types, dependency_params,
-                 dependency_types, influence_agg_func_types, coalition_influence_aggregator, nodewise_coalition_influence_agg_list):
+    def __init__(self,
+                 num_tasks,
+                 num_robots,
+                 task_graph,
+                 coalition_params,
+                 coalition_types,
+                 dependency_params,
+                 dependency_types,
+                 influence_agg_func_types,
+                 nodewise_coalition_influence_agg_list,
+                 ghost_node_param_dict,
+                 source_node_info_dict):
+
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.task_graph = task_graph
         self.edges = [list(edge) for edge in self.task_graph.edges]
-        self.coalition_influence_aggregator = coalition_influence_aggregator
         self.nodewise_coalition_influence_agg_list = nodewise_coalition_influence_agg_list
-        #breakpoint()
+
+        # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
+        # dictionary is EMPTY if not in real time mode
+        self.ghost_node_param_dict = ghost_node_param_dict
+        self.nodes_not_completed = []
+
+        # info dict: keys are 'num_source_nodes' and TODO,
+        #  empty if only single source node
+        self.source_node_info_dict = source_node_info_dict
+
         self.num_edges = len(self.edges)
         self.incidence_mat = nx.linalg.graphmatrix.incidence_matrix(self.task_graph,
                                                                     oriented=True).A  # TODO this duplicates a line in initializeSolver, should fix?
@@ -41,7 +60,11 @@ class RewardModel:
         #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
-    def _nodewise_optim_cost_function(self, f, eval=False, use_cvar=False):
+    def flow_cost_perturbed(self, f, perturbation_type, eval_param):
+        result = self._nodewise_optim_cost_function(f, eval_mode=True, perturbation_type=perturbation_type, eval_param=eval_param)
+        return np.sum(result), result
+
+    def _nodewise_optim_cost_function(self, f, eval_mode=False, perturbation_type=None, use_cvar=False, debug=False, eval_param=None):
         """
         Computes the cost function value for all the nodes individually based on the flow value
         :param f: shape=(num_edges X 1) , flow value over all edges
@@ -51,16 +74,25 @@ class RewardModel:
         # total incoming flow into each node
         incoming_flow = self._compute_incoming_flow(f)
 
+        if not self.source_node_info_dict: # if dict is empty --> no new sources
+            num_source_nodes = 1
+        else:
+            num_source_nodes = self.source_node_info_dict['num_source_nodes']
+
+        for node in range(self.num_tasks):
+            if incoming_flow[node] == 0 and node >= num_source_nodes:
+                self.nodes_not_completed.append(node)
+
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
         #var_reward_mean[0] = 0.0
-        #if self.coalition_influence_aggregator == 'product' or self.coalition_influence_aggregator == 'mix':
         var_reward_mean[0] = 1.0
         var_reward_stddev = np.zeros(self.num_tasks, dtype=object)
         var_reward = np.zeros(self.num_tasks, dtype=object)
 
         node_cost_val = np.zeros(self.num_tasks, dtype=object)
 
-        for node_i in range(1,self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward. Is this the desired behavior? this matches the result of summing states from DDP
+
+        for node_i in range(num_source_nodes, self.num_tasks): # TODO starting from 1 ensures node 0 always has 0 reward.
             # Compute Coalition Function
             node_coalition = self._compute_node_coalition(node_i, incoming_flow[node_i])
             # Compute the reward by combining with Inter-Task Dependency Function
@@ -68,37 +100,52 @@ class RewardModel:
             #breakpoint()
             #calculate incoming neighbors to node i
             incoming_node_inds = [edge[0] for edge in list(self.task_graph.in_edges(node_i))]
-            incoming_node_rewards = var_reward_mean[incoming_node_inds]
-            incoming_node_stds = var_reward_stddev[incoming_node_inds]
 
-            if eval:
-                raise(NotImplementedError)
-                #TODO: update var_reward and var_reward_stddev argument in below function call to represent the incoming node rewards to node_i
-                var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
-                                                                                                     node_coalition,
-                                                                                                     var_reward,
-                                                                                                     var_reward_stddev)
-                var_reward[node_i] = np.random.normal(var_reward_mean[node_i], var_reward_stddev[node_i])
 
-            else:
-
+            if eval_mode:
+                incoming_node_rewards = var_reward[incoming_node_inds]
+                incoming_node_stds = var_reward_stddev[incoming_node_inds]
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
                                                                                                      node_coalition,
                                                                                                      incoming_node_rewards,
-                                                                                                     incoming_node_stds)
+                                                                                         incoming_node_stds)
+                if node_coalition > 0:
+                    if perturbation_type == 'gaussian':
+                        var_reward[node_i] = max(0, np.random.normal(var_reward_mean[node_i], abs(eval_param*var_reward_mean[node_i])))
+                    elif perturbation_type == 'catastrophic':
+                        if node_i in eval_param: # list of nodes perturbed from real time solver
+                            var_reward[node_i] = 0.0
+                        else:
+                            var_reward[node_i] = var_reward_mean[node_i]
+                else:
+                    var_reward[node_i] = 0.0
+            else:
+                incoming_node_rewards = var_reward_mean[incoming_node_inds]
+                incoming_node_stds = var_reward_stddev[incoming_node_inds]
+                var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
+                                                                                                     node_coalition,
+                                                                                                     incoming_node_rewards,
+                                                                                                     incoming_node_stds,
+                                                                                                     debug=debug)
 
             if use_cvar:
                 # if use_cvar is True, use the cvar metric to compute the cost
                 node_cost_val[node_i] = self._cvar_cost(var_reward_mean[node_i],
                                                         var_reward_stddev[node_i])
-            else: # TODO should we return the means or the samples?
-                node_cost_val[node_i] = var_reward_mean[node_i]
-        if eval:
-            return var_reward
+            else:
+                if node_coalition > 0:
+                    node_cost_val[node_i] = var_reward_mean[node_i]
+                else:
+                    node_cost_val[node_i] = 0.0
+                    var_reward_mean[node_i] = 0.0
+        if eval_mode:
+            return -var_reward
+        # if np.any(var_reward_mean < -100):
+        #     import pdb; pdb.set_trace()
         # return task-wise cost (used in optimization)
         return -node_cost_val
 
-    def get_mean_std(self, node_i, rho, deltas):
+    def get_mean_std(self, node_i, rho, deltas, debug=False):
         """ Gets the mean and std deviation of the reward pdf given a coalition and an influence function output
         :arg rho is currently a scalar integer representing the coalition (i.e. the number of robots, in this
          homogeneous case). This should be replaced with a coalition function output, or perhaps the coalition vector
@@ -118,6 +165,8 @@ class RewardModel:
 
         mean = reward_func_val
         std = std_dev_func(reward_func_val)
+        if debug:
+            import pdb; pdb.set_trace()
         return mean, std
 
     def _cvar_cost(self, mean, std):
@@ -214,21 +263,44 @@ class RewardModel:
             #print("edge id: ", edge_id)
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
+                if source_node not in self.nodes_not_completed:
 
-                if np.isscalar(reward_mean) or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox):
-                    task_influence_value.append(task_interdep(reward_mean,
-                                                              self.dependency_params[edge_id]))
-                else:
-                    # we passed in a list of only incoming edges flow
-                    task_influence_value.append(task_interdep(reward_mean[list_ind],
-                                                              self.dependency_params[edge_id]))
-                    list_ind += 1
-            #breakpoint()
+                    if np.isscalar(reward_mean): # or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox)
+                        task_influence_value.append(task_interdep(reward_mean,
+                                                                  self.dependency_params[edge_id]))
+                    else:
+                        # we passed in a list of only incoming edges flow
+                        task_influence_value.append(task_interdep(reward_mean[list_ind],
+                                                                  self.dependency_params[edge_id]))
+                        list_ind += 1
+                #breakpoint()
+                else: # if source node is not completed
+                    if np.isscalar(reward_mean):
+                        task_influence_value.append(0.0)
+                    else:
+                        task_influence_value.append(0.0)
+                        list_ind += 1
+
+        # REAL TIME REALLOCATION MODE ONLY:
+        # if node has incoming tasks that were just completed, add their reward
+        if str(node_i) in list(self.ghost_node_param_dict.keys()):
+            if self.ghost_node_param_dict[str(node_i)] is None:
+                import pdb; pdb.set_trace()
+            for entry in self.ghost_node_param_dict[str(node_i)]:
+                ghost_influence_func_handle = getattr(self, entry[0])
+                ghost_influence_func_params = entry[1]
+                ghost_influence_reward_val = entry[2]
+                r = ghost_influence_func_handle(ghost_influence_reward_val, ghost_influence_func_params)
+                task_influence_value.append(r)
+        if debug:
+            import pdb; pdb.set_trace()
         #get_mean_std applies the aggregation function to the influence outputs, and ADDS the coalition function val
         mean, std = self.get_mean_std(node_i, node_coalition, task_influence_value)
         #print("node coalition (flow): ", node_coalition)
         #print("task_influence_value: ", task_influence_value)
         #import pdb; pdb.set_trace()
+        # if mean < 0:
+        #     import pdb; pdb.set_trace()
         return mean, std
 
     def _compute_node_coalition(self, node_i, f):
@@ -273,6 +345,9 @@ class RewardModel:
             val += float(param[i])*flow**i
             #print('poly ', i, flow, val)
         return val
+
+    def exponential(self, flow, param):
+        return (param[0]**0.5)*math.e**(0.5*param[1]*flow)
 
     def null(self, flow, param):
         """
