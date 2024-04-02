@@ -92,6 +92,10 @@ class ExperimentGenerator():
             self.num_nodes = exp_args['num_nodes']
         else:
             self.num_nodes = None
+        if 'inter_task_travel_times' in exp_args.keys():
+            self.inter_task_travel_times = exp_args['inter_task_travel_times']
+        else:
+            self.inter_task_travel_times = None
 
 
     def run_trials(self):
@@ -228,6 +232,7 @@ class ExperimentGenerator():
 
             # overwrite args file with task times
             trial_args['exp']['task_times'] = task_graph.task_times
+            trial_args['exp']['inter_task_travel_times'] = task_graph.inter_task_travel_times
             with open(args_file, "w") as f:
                 toml.dump(trial_args,f)
 
@@ -322,7 +327,7 @@ class ExperimentGenerator():
 
         taskgraph_args_exp['coalition_params'] = coalition_params
 
-        # sample from available agg types -- probably all sum for now???
+        # ALL AGGS ARE SUM IN MINLP OBJECTIVE, SO SET ALL AGGS TO SUM HERE WHEN COMPARING WITH MINLP
         taskgraph_args_exp['aggs'] = ['or' for _ in range(trial_num_nodes)]
 
         # add variables associated with edges
@@ -372,6 +377,7 @@ class ExperimentGenerator():
         taskgraph_args_exp['minlp_time_constraint'] = True #TODO make this a parameter
         taskgraph_args_exp['run_minlp'] = self.run_minlp
         taskgraph_args_exp['warm_start'] = self.warm_start
+        taskgraph_args_exp['inter_task_travel_times'] = self.inter_task_travel_times
 
 
         taskgraph_args['exp'] = taskgraph_args_exp
