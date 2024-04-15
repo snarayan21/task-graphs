@@ -35,7 +35,6 @@ class RewardModel:
         # info dict: keys are node ids (int) and entries are (influence_type, influence_params, reward, num_source_nodes)
         # dictionary is EMPTY if not in real time mode
         self.ghost_node_param_dict = ghost_node_param_dict
-        self.nodes_not_completed = []
 
         # info dict: keys are 'num_source_nodes' and TODO,
         #  empty if only single source node
@@ -60,8 +59,8 @@ class RewardModel:
         #breakpoint()
         return np.sum(self._nodewise_optim_cost_function(f))
 
-    def flow_cost_perturbed(self, f, perturbation_type, eval_param):
-        result = self._nodewise_optim_cost_function(f, eval_mode=True, perturbation_type=perturbation_type, eval_param=eval_param)
+    def flow_cost_perturbed(self, f, perturbation_type, eval_param, debug=False):
+        result = self._nodewise_optim_cost_function(f, eval_mode=True, perturbation_type=perturbation_type, debug=debug, eval_param=eval_param)
         return np.sum(result), result
 
     def _nodewise_optim_cost_function(self, f, eval_mode=False, perturbation_type=None, use_cvar=False, debug=False, eval_param=None):
@@ -79,9 +78,10 @@ class RewardModel:
         else:
             num_source_nodes = self.source_node_info_dict['num_source_nodes']
 
+        nodes_not_completed = []
         for node in range(self.num_tasks):
             if incoming_flow[node] == 0 and node >= num_source_nodes:
-                self.nodes_not_completed.append(node)
+                nodes_not_completed.append(node)
 
         var_reward_mean = np.zeros(self.num_tasks, dtype=object)
         #var_reward_mean[0] = 0.0
@@ -106,9 +106,11 @@ class RewardModel:
                 incoming_node_rewards = var_reward[incoming_node_inds]
                 incoming_node_stds = var_reward_stddev[incoming_node_inds]
                 var_reward_mean[node_i], var_reward_stddev[node_i] = self.compute_node_reward_dist(node_i,
-                                                                                                     node_coalition,
-                                                                                                     incoming_node_rewards,
-                                                                                         incoming_node_stds)
+                                                                                                    node_coalition,
+                                                                                                    incoming_node_rewards,
+                                                                                                    incoming_node_stds,
+                                                                                                    nodes_not_completed,
+                                                                                                    debug=debug)
                 if node_coalition > 0:
                     if perturbation_type == 'gaussian':
                         var_reward[node_i] = max(0, np.random.normal(var_reward_mean[node_i], abs(eval_param*var_reward_mean[node_i])))
@@ -126,6 +128,7 @@ class RewardModel:
                                                                                                      node_coalition,
                                                                                                      incoming_node_rewards,
                                                                                                      incoming_node_stds,
+                                                                                                     nodes_not_completed,
                                                                                                      debug=debug)
 
             if use_cvar:
@@ -201,7 +204,7 @@ class RewardModel:
             else:
                 sum_u = sum(u)
             node_coalition = self._compute_node_coalition(node_i, sum_u)
-            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0)
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, x, 0, [])
             return reward_mean
 
         def dynamics_b(x, u, node_i, additional_x, l_index):
@@ -229,7 +232,7 @@ class RewardModel:
                 sum_u = sum(u)
             node_coalition = self._compute_node_coalition(node_i, sum_u)
             #breakpoint()
-            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, full_x, 0)
+            reward_mean, reward_std = self.compute_node_reward_dist(node_i, node_coalition, full_x, 0, [])
             return reward_mean
 
         #breakpoint()
@@ -237,7 +240,7 @@ class RewardModel:
 
     # in dynamics equation, we call this function with a vector of incoming neighbor rewards
     # in optimizer function, we call this function with a vector of ALL task rewards, on the graph
-    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std,debug=False):
+    def compute_node_reward_dist(self, node_i, node_coalition, reward_mean, reward_std, nodes_not_completed, debug=False):
         """
         For a given node, this function outputs the mean and std dev of the reward based on the coalition function
         of the node, the reward means of influencing nodes, and the corresponding task influence functions
@@ -263,7 +266,7 @@ class RewardModel:
             #print("edge id: ", edge_id)
             # compute the task influence value (delta for an edge). if "null" then
             if task_interdep.__name__ != 'null':
-                if source_node not in self.nodes_not_completed:
+                if source_node not in nodes_not_completed:
 
                     if np.isscalar(reward_mean): # or isinstance(reward_mean, autograd.numpy.numpy_boxes.ArrayBox)
                         task_influence_value.append(task_interdep(reward_mean,

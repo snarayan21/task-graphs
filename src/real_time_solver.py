@@ -25,7 +25,6 @@ class RealTimeSolver:
         self.trial_dir = trial_dir
 
         # solve task graph
-        # TODO: will we want to just do one solution at a time? probably
         self.original_task_graph.solve_graph_scipy()
         # save pruned rounded NLP solution as current solution -- set of flows over edges
         self.current_solution = self.original_task_graph.pruned_rounded_baseline_solution
@@ -33,6 +32,8 @@ class RealTimeSolver:
         self.current_nodewise_rewards = -self.original_task_graph.reward_model._nodewise_optim_cost_function(
             self.current_solution, debug=False)
         self.original_agent_assignment, self.original_start_times, self.original_finish_times = self.get_assignment(self.original_task_graph, self.current_solution, list(range(self.original_num_tasks)))
+        # TODO test ITT here -- not working
+        #import pdb; pdb.set_trace()
         for task in range(self.original_num_tasks):
             if self.original_finish_times[task] > self.original_task_graph.makespan_constraint:
                 self.current_nodewise_rewards[task] = 0
@@ -78,11 +79,11 @@ class RealTimeSolver:
         # completed_tasks -- list of task IDs of completed tasks
         # inprogress_tasks -- list of task IDs of tasks currently in progress
         # inprogress_task_times -- list of time already spent (s) working on each inprogress task. order same as inprogress_tasks
-        # inprogress_task_coalitions -- list of lists, where list i is the set of agents currently working on task inprogress task i (same order as inprogress_tasks)
-        # TODO do we need input of agents working on each of these in progress tasks? or can we get that from initial assignment??
+        # inprogress_task_coalitions -- list of lists, where list i is the set of agents currently working on inprogress task i (same order as inprogress_tasks)
         # rewards -- list of rewards from completed tasks, same order as completed tasks
         # free_agents -- list of agent IDs of free agents that have just completed the tasks
         # time -- float current time
+        # draw_graph -- boolean plot and save to file graph images - use for testing, too slow for full experiments
 
         # takes in an update from graph manager node on current graph status.
         # uses update to generate a new task allocation plan
@@ -562,6 +563,12 @@ class RealTimeSolver:
 
         new_edges_old_names = [[new_to_old_node_mapping[e[0]], new_to_old_node_mapping[e[1]]] for e in
                                new_args['edges']]
+        new_args['inter_task_travel_times'] = [0.0 for _ in range(len(new_args['edges']))]
+        for edge_id in range(len(new_edges_old_names)):
+            if new_edges_old_names[edge_id] in self.original_task_graph.edges:
+                old_edge_id = self.original_task_graph.edges.index(new_edges_old_names[edge_id])
+                new_args['inter_task_travel_times'][edge_id] = self.original_task_graph.inter_task_travel_times[old_edge_id]
+
 
         source_neighbors = nodes_to_connect_to_source_new_names + [new_to_old_node_mapping.index(t) for t in
                                                                    inprogress_tasks]
@@ -831,7 +838,7 @@ class RealTimeSolver:
                 else:
                     print(f"calculating task start time for node {current_node}")
                     task_start_times[int(current_node)] = max(
-                        [task_finish_times[int(incoming_edges[i][0])] for i in range(len(incoming_edges)) if
+                        [task_finish_times[int(incoming_edges[i][0])] + taskgraph.inter_task_travel_times[incoming_edge_inds[i]] for i in range(len(incoming_edges)) if
                          not incoming_edges[i][0] in np.array(incomplete_nodes)])
                     for ind in incoming_edge_inds:
                         num_agents = int(round(flow[ind] * taskgraph.num_robots))
@@ -986,3 +993,19 @@ class RealTimeSolver:
             for task in self.task_done_history[i]:
                 print(f"task {task} with duration {self.original_task_graph.task_times[task]} completed at time {self.step_times[i]}")
 
+    def check_itt(self):
+        agent_prior_tasks = [0 for _ in range(self.original_num_robots)]
+        agent_current_tasks = [0 for _ in range(self.original_num_robots)]
+        for i in range(self.current_step):
+
+            # update current tasks of agents who just finished a task
+            for task in self.task_done_history[i]:
+                for agent in range(self.original_num_robots):
+                    if agent in self.task_assignment_history[i][task]:
+                        agent_current_tasks[agent] = task
+
+            # check all itt
+            for agent in range(self.original_num_robots):
+                last_fin = self.current_finish_times[agent_prior_tasks[agent]]
+                cur_start = self.current_start_times[agent_current_tasks[agent]]
+                #if cur_start - last_fin > self.original_task_graph.inter_task_travel_times[self.original_task_graph.edges.index(())]
