@@ -82,14 +82,17 @@ class TaskGraph:
             task_times[0] = 0.0
 
         if inter_task_travel_times is None:
-            self.inter_task_travel_times = np.zeros(self.num_edges)
+            self.inter_task_travel_times = np.zeros((self.num_tasks, self.num_tasks))
         elif inter_task_travel_times == 'random':
-            self.inter_task_travel_times = np.random.rand(self.num_edges) # range 0 to 1
-            for edge_id in range(len(self.edges)):
-                if self.edges[edge_id][0] == 0: # no need to check if any additional source nodes -- random initialization not called on subgraphs in real time mode
-                    self.inter_task_travel_times[edge_id] = 0.0
+            rand_mat =  np.random.rand(self.num_tasks, self.num_tasks) # range 0 to 1
+            self.inter_task_travel_times = (rand_mat + rand_mat.T)/2 # ensure symmetric, range 0 to 1
+            self.inter_task_travel_times[0,:] = 0 # all travel times from source are 0
+            self.inter_task_travel_times[:,0] = 0 # all travel times from source are 0
+            for i in range(self.num_tasks):
+                self.inter_task_travel_times[i,i] = 0.0 # all self edges are zero
         else:
             self.inter_task_travel_times = inter_task_travel_times
+
         self.task_times = np.array(task_times, dtype='float')
         print("self.task_times: ", self.task_times)
 
@@ -706,7 +709,7 @@ class TaskGraph:
                     task_start_times[int(current_node)] = 0.0
                     incomplete_nodes.append(current_node)
                 else:
-                    task_start_times[int(current_node)] = max([task_finish_times[int(incoming_edges[i][0])] + self.inter_task_travel_times[incoming_edge_inds[i]] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
+                    task_start_times[int(current_node)] = max([task_finish_times[int(incoming_edges[i][0])] + self.inter_task_travel_times[int(incoming_edges[i][0]), int(current_node)] for i in range(len(incoming_edges)) if not incoming_edges[i][0] in np.array(incomplete_nodes)])
             else:
                 task_start_times[int(current_node)] = 0
             task_finish_times[int(current_node)] = task_start_times[int(current_node)] + self.task_times[int(current_node)]

@@ -164,7 +164,8 @@ class ExperimentGenerator():
                 print("CHECKING ITT ------------------------------")
                 tst, tft = task_graph.time_task_execution(task_graph.pruned_rounded_baseline_solution)
                 for i in range(len(task_graph.edges)):
-                    itt = task_graph.inter_task_travel_times[i]
+                    edge_i = task_graph.edges[i]
+                    itt = task_graph.inter_task_travel_times[edge_i[0], edge_i[1]]
                     itt_actual = tst[task_graph.edges[i][1]] - tft[task_graph.edges[i][0]]
                     if itt <= itt_actual + 0.000001:
                         print(f"EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
@@ -175,6 +176,7 @@ class ExperimentGenerator():
                     else:
                         print(f"ABERRATION ON EDGE ({task_graph.edges[i][0]}, {task_graph.edges[i][1]}): actual -- {itt_actual}; minimum -- {itt}")
                         import pdb; pdb.set_trace()
+
                 print("--------------------------DONE CHECKING ITT")
 
 

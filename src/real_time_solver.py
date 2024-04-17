@@ -72,6 +72,8 @@ class RealTimeSolver:
         self.task_done_history = [[0]]
         self.task_assignment_history = [copy.deepcopy(self.current_agent_assignment)]
         self.catastrophic_perturbations = []
+        self.robot_last_completed_task = [0 for _ in range(self.original_num_robots)]
+        self.cur_free_agents = []
 
     def step(self, completed_tasks, inprogress_tasks, inprogress_task_times, inprogress_task_coalitions, rewards,
              free_agents, time, draw_graph):
@@ -97,10 +99,18 @@ class RealTimeSolver:
         print(f"Current time: {time}")
 
         self.step_times.append(time)
+        cur_free_agents = list(range(self.original_num_robots))
+        for c in inprogress_task_coalitions:
+            for a in cur_free_agents:
+                if a in c:
+                    cur_free_agents.remove(a)
+        self.cur_free_agents = cur_free_agents
         self.task_done_history.append([])
         task_it = 0
         for task in completed_tasks:
             self.task_completed[task] = True
+            for agent in free_agents:
+                self.robot_last_completed_task[agent] = task
             self.task_rewards[task] = rewards[task_it]
             self.task_done_history[self.current_step].append(task)
             task_it += 1
@@ -121,6 +131,8 @@ class RealTimeSolver:
                     for edge in in_edges:
                         if not self.task_completed[edge[0]]:
                             self.task_completed[edge[0]] = True
+                            for agent in self.current_agent_assignment[edge[0]]:
+                                self.robot_last_completed_task[agent] = edge[0]
                             new_completed_task = True
                             completed_tasks_this_it.append(edge[0])
                             self.task_done_history[self.current_step].append(edge[0])
@@ -151,15 +163,17 @@ class RealTimeSolver:
                 for edge in in_edges:
                     if not self.task_completed[edge[0]]:
                         self.task_completed[edge[0]] = True
+                        for agent in self.current_agent_assignment[edge[0]]:
+                            self.robot_last_completed_task[agent] = edge[0]
                         new_completed_task = True
                         self.task_done_history[self.current_step].append(edge[0])
                         self.task_rewards[edge[0]] = 0.0
                         newly_added.append(edge[0])
             all_completed_inprogress = all_completed_inprogress + newly_added
 
-
-        if len(self.task_completed) - sum(self.task_completed) < 2:
+        if len(self.task_completed) - sum(self.task_completed) < 2 or time > self.original_task_graph.makespan_constraint:
             print(f"After task removal, {len(self.task_completed) - sum(self.task_completed)} tasks remain.")
+            print(f"Current time: {time}, makespan constraint: {self.original_task_graph.makespan_constraint}")
             if not np.all(self.task_completed):
                 for task in range(self.original_num_tasks):
                     if not self.task_completed[task]:
@@ -563,11 +577,6 @@ class RealTimeSolver:
 
         new_edges_old_names = [[new_to_old_node_mapping[e[0]], new_to_old_node_mapping[e[1]]] for e in
                                new_args['edges']]
-        new_args['inter_task_travel_times'] = [0.0 for _ in range(len(new_args['edges']))]
-        for edge_id in range(len(new_edges_old_names)):
-            if new_edges_old_names[edge_id] in self.original_task_graph.edges:
-                old_edge_id = self.original_task_graph.edges.index(new_edges_old_names[edge_id])
-                new_args['inter_task_travel_times'][edge_id] = self.original_task_graph.inter_task_travel_times[old_edge_id]
 
 
         source_neighbors = nodes_to_connect_to_source_new_names + [new_to_old_node_mapping.index(t) for t in
@@ -609,7 +618,36 @@ class RealTimeSolver:
                 #import pdb; pdb.set_trace()
                 raise Exception
         new_args['num_tasks'] = len(new_to_old_node_mapping)
-        # TODO need to update inter-task travel time
+
+        # ITT: update inter task travel times
+        new_itt = 10000000 * np.ones((new_args['num_tasks'], new_args['num_tasks']))
+        # update edges that are carried over to new graph
+        kept_nodes = [i for i in new_to_old_node_mapping if i >= 0]
+        for i in kept_nodes:
+            for j in kept_nodes:
+                itt_val = self.original_task_graph.inter_task_travel_times[i,j]
+                new_itt[new_to_old_node_mapping.index(i),new_to_old_node_mapping.index(j)] = itt_val
+                new_itt[new_to_old_node_mapping.index(j),new_to_old_node_mapping.index(i)] = itt_val
+        # update edges from new source nodes > 0 (artificial sources for in progress tasks)
+        for i in range(1,num_new_sources+1):
+            for j in range(new_args['num_tasks']):
+                new_itt[i,j] = 0.0
+                new_itt[j,i] = 0.0
+        # update edges from free robot source node (0)
+        for j in range(new_args['num_tasks']):
+            old_task_ind = new_to_old_node_mapping[j]
+            if old_task_ind == -1:
+                new_itt[0,j] = 0.0
+                new_itt[j,0] = 0.0
+            else:
+                free_agent_tts = [self.original_task_graph.inter_task_travel_times[self.robot_last_completed_task[i], old_task_ind] for i in self.cur_free_agents]
+                new_itt[0,j] = np.max(free_agent_tts)
+                new_itt[j,0] = np.max(free_agent_tts)
+        # ensure self edges still 0
+        for i in range(new_args['num_tasks']):
+            new_itt[i,i] = 0.0
+        new_args['inter_task_travel_times'] = new_itt
+
         node_capacities = [0.]
         for coalition in inprogress_task_coalitions:
             node_capacities.append(len(coalition) / self.original_num_robots)
@@ -838,7 +876,7 @@ class RealTimeSolver:
                 else:
                     print(f"calculating task start time for node {current_node}")
                     task_start_times[int(current_node)] = max(
-                        [task_finish_times[int(incoming_edges[i][0])] + taskgraph.inter_task_travel_times[incoming_edge_inds[i]] for i in range(len(incoming_edges)) if
+                        [task_finish_times[int(incoming_edges[i][0])] + taskgraph.inter_task_travel_times[int(incoming_edges[i][0]), int(current_node)] for i in range(len(incoming_edges)) if
                          not incoming_edges[i][0] in np.array(incomplete_nodes)])
                     for ind in incoming_edge_inds:
                         num_agents = int(round(flow[ind] * taskgraph.num_robots))
@@ -996,16 +1034,21 @@ class RealTimeSolver:
     def check_itt(self):
         agent_prior_tasks = [0 for _ in range(self.original_num_robots)]
         agent_current_tasks = [0 for _ in range(self.original_num_robots)]
-        for i in range(self.current_step):
 
-            # update current tasks of agents who just finished a task
-            for task in self.task_done_history[i]:
-                for agent in range(self.original_num_robots):
-                    if agent in self.task_assignment_history[i][task]:
-                        agent_current_tasks[agent] = task
+        for i in range(len(self.task_done_history)):
+            tasks_done = self.task_done_history[i]
+            for task_done in tasks_done:
+                free_agents = self.task_assignment_history[i][task_done]
+                for agent in free_agents:
+                    last_fin = self.current_finish_times[agent_prior_tasks[agent]]
+                    cur_start = self.current_start_times[task_done]
+                    if cur_start - last_fin > self.original_task_graph.inter_task_travel_times[agent_prior_tasks[agent], task_done] - 0.000001:
+                        print(f"Checked agent {agent}: task {agent_prior_tasks[agent]} --> {task_done}")
+                        print(f"        Min time ----- {self.original_task_graph.inter_task_travel_times[agent_prior_tasks[agent], task_done]}")
+                        print(f"        Actual time -- {cur_start - last_fin}")
+                    elif last_fin == 0.0:
+                        print(f"Checked agent {agent}: prior task {agent_prior_tasks[agent]} not completed")
+                    else:
+                        import pdb; pdb.set_trace()
 
-            # check all itt
-            for agent in range(self.original_num_robots):
-                last_fin = self.current_finish_times[agent_prior_tasks[agent]]
-                cur_start = self.current_start_times[agent_current_tasks[agent]]
-                #if cur_start - last_fin > self.original_task_graph.inter_task_travel_times[self.original_task_graph.edges.index(())]
+                    agent_prior_tasks[agent] = task_done # update prior task of each agent that just finished a task
