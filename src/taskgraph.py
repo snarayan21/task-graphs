@@ -85,7 +85,7 @@ class TaskGraph:
             self.inter_task_travel_times = np.zeros((self.num_tasks, self.num_tasks))
         elif inter_task_travel_times == 'random':
             rand_mat =  np.random.rand(self.num_tasks, self.num_tasks) # range 0 to 1
-            self.inter_task_travel_times = (rand_mat + rand_mat.T)/2 # ensure symmetric, range 0 to 1
+            self.inter_task_travel_times = (rand_mat + rand_mat.T)/20 # ensure symmetric, range 0 to 0.1
             self.inter_task_travel_times[0,:] = 0 # all travel times from source are 0
             self.inter_task_travel_times[:,0] = 0 # all travel times from source are 0
             for i in range(self.num_tasks):
@@ -167,6 +167,7 @@ class TaskGraph:
             task_graph=self.task_graph,
             task_times=self.task_times,
             makespan_constraint=self.makespan_constraint,
+            inter_task_travel_time=self.inter_task_travel_times,
             perturbed_objective=self.minlp_perturbed_objective
         )
         return obj

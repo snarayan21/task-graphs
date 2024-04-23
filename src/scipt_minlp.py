@@ -10,7 +10,8 @@ class MRTA_XD():
 
     def __init__(self, num_tasks, num_robots, dependency_edges, coalition_params, coalition_types, dependency_params,
                  dependency_types,influence_agg_func_types, nodewise_coalition_influence_agg_list,
-                 reward_model, task_graph,task_times, makespan_constraint, time_limit=1000, perturbed_objective=False):
+                 reward_model, task_graph,task_times, makespan_constraint, inter_task_travel_time=None,
+                 time_limit=1000, perturbed_objective=False):
         self.num_tasks = num_tasks
         self.num_robots = num_robots
         self.dependency_edges = dependency_edges
@@ -24,6 +25,10 @@ class MRTA_XD():
         self.task_graph = task_graph
         self.task_times = task_times
         self.makespan_constraint = makespan_constraint
+        if inter_task_travel_time is None:
+            self.inter_task_travel_time = np.zeros((self.num_tasks, self.num_tasks))
+        else:
+            self.inter_task_travel_time = inter_task_travel_time
         self.time_limit = time_limit
         self.in_nbrs = []
         for curr_node in range(self.num_tasks):
@@ -250,14 +255,14 @@ class MRTA_XD():
                     #only apply constraint when both tasks are completed by at least one agent
                     is_task_completed_a = quicksum([self.x_ak[self.ind_x_ak[a, k+1]] for a in range(self.num_robots)])
                     is_task_completed_b = quicksum([self.x_ak[self.ind_x_ak[a, k_p+1]] for a in range(self.num_robots)])
-                    self.model.addCons(is_task_completed_a*is_task_completed_b*(self.s_k[k_p]-self.f_k[k]) >= 0)
+                    self.model.addCons(is_task_completed_a*is_task_completed_b*(self.s_k[k_p]-self.f_k[k]-self.inter_task_travel_time[k,k_p]) >= 0)
 
         # constraint i: time between two consecutive tasks allows for travel time (assumed zero right now)
         for a in range(self.num_robots):
             for k_p in range(self.num_tasks):
                 for k in range(self.num_tasks):
                     var = self.o_akk[self.ind_o_akk[a,k+1,k_p]]
-                    self.model.addCons(var*(self.s_k[k_p]-self.f_k[k]) >= 0)
+                    self.model.addCons(var*(self.s_k[k_p]-self.f_k[k]-self.inter_task_travel_time[k,k_p]) >= 0)
 
         # DURATION CONSTRAINTS
         for k in range(self.num_tasks):
