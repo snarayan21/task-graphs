@@ -527,6 +527,7 @@ class TaskGraph:
         #convert flows to units of whole agents
         flows_mult = flows*self.num_robots
         rounded_flows = np.zeros_like(flows)
+        flow_from_source = self.num_robots
 
         for curr_node in ordered_nodes[0:-1]:
             out_edges = self.task_graph.out_edges(curr_node)
@@ -544,8 +545,9 @@ class TaskGraph:
 
             # calculate total flow to be allotted
             if curr_node in source_nodes:
-                in_flow_exact = np.sum(out_flows)
+                in_flow_exact = min(np.sum(out_flows), flow_from_source) # can never exceed 1
                 in_flow = np.around(in_flow_exact)
+                flow_from_source -= in_flow
             else:
                 in_flows = [rounded_flows[i] for i in in_edge_inds]
                 in_flow = np.sum(in_flows)
