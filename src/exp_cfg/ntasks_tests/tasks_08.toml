@@ -1,13 +1,16 @@
 [exp]
 exp_name = 'tasks_08_exp'
-num_trials = 10
+num_trials = 100
 num_layers = 4
 num_robots = 4
 num_layer_nodes_max = 3
 num_nodes = 8
 run_ddp = false
 coalition_influence_aggregator = 'mix'
-makespan_constraint = 0.6
+makespan_constraint = 0.8
+degree_mean = 3
+inter_task_travel_times = 'random'
+run_minlp = true
 
 
 from_file = false

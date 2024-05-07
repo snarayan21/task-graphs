@@ -8,6 +8,8 @@ num_nodes = 10
 run_ddp = false
 coalition_influence_aggregator = 'mix'
 makespan_constraint = 0.8
+degree_mean = 4
+inter_task_travel_times = 'random'
 
 
 from_file = false

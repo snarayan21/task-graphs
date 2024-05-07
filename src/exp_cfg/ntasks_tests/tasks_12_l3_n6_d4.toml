@@ -3,11 +3,13 @@ exp_name = 'tasks_10_exp'
 num_trials = 10
 num_layers = 3
 num_robots = 4
-num_layer_nodes_max = 5
-num_nodes = 10
+num_layer_nodes_max = 6
+num_nodes = 12
 run_ddp = false
 coalition_influence_aggregator = 'mix'
 makespan_constraint = 0.8
+degree_mean = 4
+inter_task_travel_times = 'random'
 
 
 from_file = false
